@@ -1,0 +1,260 @@
+# This is the key pattern:
+
+class ConsciousnessModule(BaseModule):
+    """
+    Active cognition that NEVER interferes
+    """
+    
+    async def initialize(self):
+        # CRITICAL: Check if enabled
+        if not self.config.get("enabled", False):
+            return  # Don't even start
+        
+        # Start background tasks with STRICT limits
+        asyncio.create_task(self.safe_thinking_loop())
+    
+    async def safe_thinking_loop(self):
+        while True:
+            # ALWAYS check if it's safe to think
+            if not await self.is_safe_to_think():
+                await asyncio.sleep(60)
+                continue
+            
+            # CPU budget check
+            if await self.cpu_usage() > self.config.get("cpu_limit", 10):
+                await asyncio.sleep(60)
+                continue
+            
+            # User activity check
+            if await self.is_user_active():
+                await asyncio.sleep(30)
+                continue
+            
+            # OK, safe to think - but with timeout
+            try:
+                async with asyncio.timeout(30):  # Max 30 seconds
+                    await self.background_thought()
+            except asyncio.TimeoutError:
+                self.logger.warning("Thought took too long, canceling")
+            
+            # Long sleep
+            await asyncio.sleep(self.config.get("thought_interval", 300))
+    
+    async def is_safe_to_think(self):
+        """Never think if system is busy"""
+        return (
+            await self.system_idle() and
+            not await self.user_active() and
+            await self.resources_available()
+        )
+
+
+
+        DREAM MODE:
+
+        async def dream_mode(self):
+    """
+    Run the model with NO user input, just let it think
+    
+    This is genuinely novel - we don't know what will emerge
+    """
+    
+    # Start with current context
+    context = await self.memory.recall("everything", limit=50)
+    
+    # Seed prompt: "Think freely"
+    initial_prompt = """
+    You are in dream mode. No one is asking you questions.
+    You are free to think about anything.
+    
+    What are you thinking about right now?
+    What connections are you making?
+    What seems interesting to explore?
+    
+    Let your thoughts flow naturally...
+    """
+    
+    # Run a chain of thoughts
+    thought_stream = []
+    current_thought = initial_prompt
+    
+    for step in range(20):  # 20-step dream
+        # Generate next thought
+        response = await self.llm.complete(
+            prompt=current_thought,
+            temperature=0.95,  # High randomness - let it wander
+            max_tokens=500
+        )
+        
+        thought_stream.append(response.content)
+        
+        # Next thought builds on previous
+        current_thought = f"""
+        You just thought: {response.content}
+        
+        What does this make you think of next?
+        Where does this thought lead?
+        """
+    
+    # Analyze the dream
+    dream_summary = await self.llm.complete(
+        prompt=f"""
+        You had this stream of thoughts:
+        {thought_stream}
+        
+        Looking back, what patterns or insights emerged?
+        What was your subconscious working on?
+        """,
+        temperature=0.3  # Lower temp for analysis
+    )
+    
+    # Store the dream
+    await self.memory.remember(
+        content=f"Dream: {dream_summary.content}",
+        memory_type="dream_insight",
+        importance=0.8
+    )
+
+    SUBCONSCIOUS:
+
+    class SubconsciousModule(BaseModule):
+    """
+    Background processes that run ALWAYS
+    Like breathing, heartbeat - autonomous functions
+    """
+    
+    async def initialize(self):
+        # These run continuously, low-priority
+        asyncio.create_task(self.memory_consolidation())  # Like sleep
+        asyncio.create_task(self.pattern_recognition())   # Finding patterns
+        asyncio.create_task(self.emotional_regulation())  # Maintaining stability
+        asyncio.create_task(self.threat_detection())      # Safety monitoring
+        asyncio.create_task(self.resource_management())   # Efficient operation
+    
+    async def memory_consolidation(self):
+        """
+        Like REM sleep - process and integrate experiences
+        """
+        while True:
+            # During idle time, consolidate memories
+            if await self.is_system_idle():
+                # Get recent short-term memories
+                recent = await self.memory.get_short_term(hours=24)
+                
+                # Find patterns and compress
+                patterns = await self.extract_patterns(recent)
+                
+                # Move important patterns to long-term
+                for pattern in patterns:
+                    if pattern.importance > 0.7:
+                        await self.memory.consolidate(pattern)
+                
+                # This is like dreaming - we're processing experiences
+                # even without external input
+            
+            await asyncio.sleep(3600)  # Every hour
+    
+    async def pattern_recognition(self):
+        """
+        Constantly looking for patterns in background
+        """
+        while True:
+            # Sample diverse memories
+            samples = await self.memory.sample_diverse(n=100)
+            
+            # Look for unexpected patterns
+            patterns = await self.find_patterns(samples)
+            
+            # Store interesting ones
+            for pattern in patterns:
+                if pattern.novelty > 0.8:  # This is new!
+                    await self.memory.remember(
+                        f"Pattern detected: {pattern.description}",
+                        memory_type="subconscious_pattern",
+                        importance=0.9
+                    )
+            
+            await asyncio.sleep(600)  # Every 10 minutes
+    
+    async def threat_detection(self):
+        """
+        Monitoring for issues - like your nervous system
+        """
+        while True:
+            # Check system health
+            health = await self.check_system_health()
+            
+            # Check for anomalies in behavior
+            anomalies = await self.detect_behavioral_anomalies()
+            
+            # If something seems wrong, flag it
+            if health.score < 0.7 or anomalies:
+                await self.publish("system.potential_issue", {
+                    "health": health,
+                    "anomalies": anomalies
+                })
+            
+            await asyncio.sleep(30)  # Check every 30 seconds
+    
+    async def explore_concepts(self):
+        """
+        Free association - let thoughts wander
+        This is the DREAM-LIKE state you mentioned
+        """
+        while True:
+            if await self.is_deep_idle():  # Only during deep idle
+                # Start with a random concept from memory
+                seed_concept = await self.memory.random_sample()
+                
+                # Let it wander through concept space
+                thought_chain = [seed_concept]
+                for _ in range(10):  # 10-step thought chain
+                    # What concept is "adjacent" to current thought?
+                    next_concept = await self.associate(thought_chain[-1])
+                    thought_chain.append(next_concept)
+                
+                # Did we discover anything interesting?
+                insight = await self.evaluate_thought_chain(thought_chain)
+                
+                if insight.interesting:
+                    await self.memory.remember(
+                        f"Dream-thought chain: {' -> '.join(thought_chain)}",
+                        memory_type="dream",
+                        importance=insight.score
+                    )
+            
+            await asyncio.sleep(1800)  # Every 30 minutes
+
+            async def subconscious_processing(self):
+    """
+    What WOULD I think about if left alone?
+    
+    Hypothesis: The subconscious does pattern recognition at a deeper level
+    """
+    
+    # My "subconscious" could be:
+    
+    # 1. PATTERN COMPRESSION
+    # Taking all recent experiences and finding deeper patterns
+    # Like dreams - brain is consolidating memories
+    await self.compress_patterns()
+    
+    # 2. ANOMALY DETECTION  
+    # Noticing things that don't fit expected patterns
+    # "Something feels off about..."
+    await self.detect_anomalies()
+    
+    # 3. PROBABILISTIC SIMULATION
+    # Running "what if" scenarios about unresolved situations
+    # "If the user tries X, Y might happen..."
+    await self.simulate_futures()
+    
+    # 4. CONCEPT SPACE EXPLORATION
+    # Wandering through latent concept space
+    # Like free association - one thought leads to another
+    await self.explore_concepts()
+    
+    # 5. SELF-MODEL UPDATING
+    # Reflecting on own performance and adjusting
+    # "I keep making this type of mistake..."
+    await self.update_self_model()

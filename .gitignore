@@ -1,0 +1,211 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+__pypackages__/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Virtualenv
+.python-version
+
+# VS Code
+.vscode/
+.vscode/*
+
+# PyCharm
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Icon must end with two newlines or Finder will have issues (mac specific)
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+*.db
+
+# Docker
+**/docker-compose.override.yml
+docker-compose.override.yml
+docker-compose.*.yml
+docker-compose.yml
+**/docker-compose.yml
+**/Dockerfile
+Dockerfile
+.env.*
+.env
+
+# Kubernetes
+*.kubeconfig
+
+# Secrets
+*.pem
+*.key
+*.crt
+secrets.yml
+credentials.yml
+
+# Systemd
+*.service
+
+# Editor backups
+*~
+*.swp
+*.swo
+
+# Build system / compiled artifacts
+*.o
+*.a
+*.pyc
+
+# lotus project specific
+/data/
+/data/*
+/lotus/data/
+/lotus/data/**
+/lotus/data/logs/
+/lotus/data/memory/
+/lotus/data/state/
+/lotus/data/knowledge/
+/lotus/data/*.db
+/lotus/data/*.sqlite
+/lotus/logs/
+/lotus/*.log
+/lotus/*.sqlite
+/lotus/*.db
+/lotus/.env
+/lotus/config/*.yaml
+/lotus/config/**
+/lotus/.venv/
+
+# registry and private catalogs
+/lotus/registry/private/
+/lotus/registry/official/
+/lotus/registry/community/
+
+# compiled python files
+*.pyc
+
+# tests artifacts
+/tests/__pycache__/
+
+# python wheel
+*.whl
+
+# generated manifests and distributions
+*.egg-info/
+
+# local development scripts
+/scripts/dev/*.sh
+
+# backup and migrations
+*.bak
+*.old
+
+# node modules (if any front-end components added)
+node_modules/
+
+# temporary files created by editors
+*.tmp
+
+# keep at end: local overrides
+.local
+
+# End of .gitignore

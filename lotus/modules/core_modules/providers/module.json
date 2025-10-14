@@ -1,0 +1,57 @@
+{
+  "name": "providers",
+  "version": "1.0.0",
+  "display_name": "LLM Provider System",
+  "description": "Multi-provider LLM access with intelligent routing, fallbacks, and cost optimization",
+  "author": "LOTUS Team",
+  "license": "MIT",
+  "homepage": "https://github.com/lotus-ai/providers",
+  
+  "tags": [
+    "core",
+    "llm",
+    "providers",
+    "anthropic",
+    "openai",
+    "google",
+    "ollama"
+  ],
+  
+  "category": "core",
+  "type": "system",
+  
+  "requirements": {
+    "python": ">=3.10",
+    "packages": [
+      "anthropic>=0.25.0",
+      "openai>=1.12.0",
+      "google-generativeai>=0.3.0",
+      "httpx>=0.25.0"
+    ]
+  },
+  
+  "capabilities": {
+    "providers": ["anthropic", "openai", "google", "ollama"],
+    "supports_streaming": true,
+    "supports_function_calling": true,
+    "supports_vision": true,
+    "automatic_fallback": true
+  },
+  
+  "configuration": {
+    "config_file": "config/modules/providers.yaml",
+    "environment_variables": [
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "GOOGLE_API_KEY",
+      "OLLAMA_BASE_URL"
+    ]
+  },
+  
+  "metadata": {
+    "created": "2025-10-13",
+    "updated": "2025-10-14",
+    "status": "active",
+    "stability": "stable"
+  }
+}

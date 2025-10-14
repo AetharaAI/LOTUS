@@ -1,0 +1,58 @@
+{
+  "name": "memory",
+  "version": "1.0.0",
+  "display_name": "Memory System",
+  "description": "4-tier memory architecture - Working, Short-term, Long-term, and Persistent storage",
+  "author": "LOTUS Team",
+  "license": "MIT",
+  "homepage": "https://github.com/lotus-ai/memory",
+  
+  "tags": [
+    "core",
+    "memory",
+    "storage",
+    "retrieval",
+    "semantic-search"
+  ],
+  
+  "category": "core",
+  "type": "system",
+  
+  "requirements": {
+    "python": ">=3.10",
+    "redis": ">=7.0",
+    "postgresql": ">=14.0",
+    "packages": [
+      "redis>=5.0.0",
+      "psycopg[binary]>=3.1.0",
+      "chromadb>=0.4.22",
+      "sentence-transformers>=2.3.0"
+    ]
+  },
+  
+  "capabilities": {
+    "memory_tiers": 4,
+    "supports_semantic_search": true,
+    "supports_consolidation": true,
+    "supports_ranking": true,
+    "max_memory_size": "unlimited"
+  },
+  
+  "configuration": {
+    "config_file": "config/modules/memory.yaml",
+    "environment_variables": [
+      "REDIS_HOST",
+      "REDIS_PORT",
+      "POSTGRES_HOST",
+      "POSTGRES_PORT",
+      "POSTGRES_DB"
+    ]
+  },
+  
+  "metadata": {
+    "created": "2025-10-13",
+    "updated": "2025-10-14",
+    "status": "active",
+    "stability": "stable"
+  }
+}

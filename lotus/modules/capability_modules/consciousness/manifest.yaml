@@ -1,0 +1,45 @@
+name: "consciousness"
+version: "1.0.0"
+type: "capability"
+priority: "high"
+description: "Active cognition engine - continuous background thinking"
+
+dependencies:
+  modules: ["reasoning", "memory", "providers"]
+
+subscriptions:
+  - pattern: "system.low_activity"
+    handler: "on_low_activity"
+  - pattern: "memory.new_memory"
+    handler: "on_new_memory"
+
+publications:
+  - "cognition.spontaneous_thought"
+  - "action.proactive_insight"
+  - "action.ask_question"
+  - "action.suggest_solution"
+
+config_schema:
+  thought_stream_interval: 30
+  connection_making_interval: 120
+  curiosity_interval: 300
+  insight_threshold: 0.7
+  proactivity_level: 0.8
+
+hotload: true
+
+
+
+# modules/capability_modules/consciousness/manifest.yaml
+name: "consciousness"
+type: "capability"  # NOT core - this is key
+priority: "low"      # Runs AFTER everything else
+optional: true       # System works fine without it
+
+config_schema:
+  enabled: false     # DISABLED BY DEFAULT
+  background_thinking: true
+  proactive_mode: false  # Start conservative
+  thought_interval: 300  # 5 minutes, not 30 seconds
+  cpu_limit: 10      # Max 10% CPU usage
+  only_when_idle: true  # Only think when system is idle

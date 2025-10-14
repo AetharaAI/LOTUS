@@ -1,0 +1,73 @@
+name: "reasoning"
+version: "1.0.0"
+type: "core"
+author: "LOTUS Team"
+license: "MIT"
+priority: "critical"
+description: "ReAct reasoning engine - the brain of LOTUS that thinks, plans, and acts"
+
+# Dependencies
+dependencies:
+  modules: ["memory", "providers"]
+  system: ["python>=3.11"]
+  packages: []
+
+# Event subscriptions (what events this module listens to)
+subscriptions:
+  - pattern: "perception.user_input"
+    handler: "on_user_input"
+    description: "Process user text input"
+  
+  - pattern: "perception.voice_input"
+    handler: "on_voice_input"
+    description: "Process user voice input"
+  
+  - pattern: "action.tool_result"
+    handler: "on_tool_result"
+    description: "Receive tool execution results"
+  
+  - pattern: "cognition.delegation_result"
+    handler: "on_delegation_result"
+    description: "Receive results from delegated tasks"
+
+# Event publications (what events this module publishes)
+publications:
+  - "cognition.thought"
+  - "cognition.tool_call"
+  - "cognition.delegate"
+  - "action.respond"
+  - "memory.store"
+
+# LLM providers configuration
+providers:
+  reasoning: "claude-sonnet-4"  # Main reasoning model
+  simple: "gpt-4o-mini"         # For simple tasks
+  complex: "claude-opus-4"      # For complex tasks
+
+# Tools provided by this module
+tools:
+  - name: "think"
+    description: "Analyze a situation and determine next actions"
+    parameters:
+      - name: "context"
+        type: "dict"
+        required: true
+
+# Configuration schema
+config_schema:
+  max_iterations: 10          # Maximum ReAct loop iterations
+  thinking_temperature: 0.7   # Temperature for reasoning
+  enable_delegation: true     # Allow delegating to specialized models
+  enable_reflection: true     # Reflect on actions and learn
+  context_window: 4000        # Maximum context size
+
+# Hot-reload support
+hotload: false  # Core module, requires restart
+
+# Security permissions
+permissions:
+  - "llm.api_call"
+  - "memory.read"
+  - "memory.write"
+  - "event.publish"
+  - "event.subscribe"

@@ -1,0 +1,54 @@
+# Hello World Example Module
+# Demonstrates basic module structure
+
+name: "hello_world"
+version: "1.0.0"
+type: "capability"
+priority: "normal"
+
+description: "Simple example module that demonstrates LOTUS module structure"
+
+author: "LOTUS Team"
+license: "MIT"
+
+# Dependencies
+dependencies:
+  modules: []  # No module dependencies
+  system: []   # No system dependencies
+  python: []   # No Python package dependencies
+
+# Event subscriptions
+subscriptions:
+  - "system.ready"
+  - "user.greeting"
+
+# Events this module publishes
+publications:
+  - "action.speak"
+  - "example.hello_sent"
+
+# Configuration
+config:
+  enabled: true
+  hotload: true
+  sandbox: false
+  
+  # Module-specific settings
+  settings:
+    greeting_message: "Hello from LOTUS!"
+    auto_greet_on_startup: true
+
+# Capabilities this module provides
+capabilities:
+  - "greeting"
+  - "example_demonstration"
+
+# Tools this module exposes
+tools:
+  - name: "say_hello"
+    description: "Say hello to someone"
+    parameters:
+      - name: "name"
+        type: "string"
+        required: true
+        description: "Name to greet"

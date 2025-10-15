@@ -1,87 +1,81 @@
 """
-Memory Module - 4-Tier Memory System
+LOTUS Memory Module - 4-Tier Memory System Coordinator
 
-This module coordinates LOTUS's entire memory architecture:
-- L1 (Working): Last 10 minutes, instant Redis access
-- L2 (Short-term): Last 24 hours, Redis Streams
-- L3 (Long-term): Semantic memories, ChromaDB vectors
-- L4 (Persistent): Structured facts, PostgreSQL
-
-The memory system automatically:
-- Routes storage to appropriate tier
-- Consolidates memories over time
-- Retrieves across all tiers
-- Ranks by relevance and recency
+Manages the complete memory architecture and integrates with the event bus.
+Uses the new modular tier implementations from lib/memory/
 """
 
 import asyncio
-import json
-from datetime import datetime, timedelta
+import time
 from typing import Dict, List, Any, Optional
-from dataclasses import dataclass
-import hashlib
 
 from lib.module import BaseModule
 from lib.decorators import on_event, tool, periodic
 from lib.memory import (
-    WorkingMemory, ShortTermMemory, LongTermMemory, 
-    PersistentMemory, MemoryItem
+    MemoryItem, MemoryType,
+    WorkingMemory, ShortTermMemory, LongTermMemory, PersistentMemory,
+    MemoryRetrieval, RetrievalConfig, RetrievalStrategy
 )
-
-
-@dataclass
-class MemoryQuery:
-    """Query for memory retrieval"""
-    query: str
-    tier: Optional[str] = None  # Specific tier or search all
-    limit: int = 10
-    min_relevance: float = 0.5
-    time_window: Optional[timedelta] = None
 
 
 class MemoryModule(BaseModule):
     """
     Memory System Coordinator
     
-    Manages all 4 tiers of memory and handles:
-    - Intelligent storage routing
-    - Cross-tier retrieval
-    - Memory consolidation
-    - Relevance ranking
+    Manages all 4 tiers and provides memory services to other modules
+    via the event bus.
     """
     
     async def initialize(self) -> None:
         """Initialize all memory tiers"""
         self.logger.info("Initializing 4-tier memory system")
         
-        # Initialize memory tiers
+        # Get backend connections from nucleus
+        # These should be set up in nucleus.py and stored in config
+        redis_client = self.config.get("connections.redis")
+        chroma_client = self.config.get("connections.chromadb")
+        postgres_conn = self.config.get("connections.postgres")
+        
+        if not all([redis_client, chroma_client, postgres_conn]):
+            self.logger.error("Missing backend connections! Check nucleus.py setup")
+            raise RuntimeError("Memory backends not initialized")
+        
+        # Initialize L1: Working Memory (Redis)
         self.L1 = WorkingMemory(
-            self.config, 
-            self.message_bus,
-            ttl=self.config.get("memory.working_memory.ttl_seconds", 600)
+            redis_client,
+            ttl_seconds=self.config.get("memory.working_memory.ttl_seconds", 600),
+            max_items=self.config.get("memory.working_memory.max_items", 100)
         )
         
+        # Initialize L2: Short-term Memory (Redis Streams)
         self.L2 = ShortTermMemory(
-            self.config,
-            self.message_bus,
-            ttl_hours=self.config.get("memory.short_term.ttl_hours", 24)
+            redis_client,
+            ttl_hours=self.config.get("memory.short_term.ttl_hours", 24),
+            max_items=self.config.get("memory.short_term.max_items", 1000)
         )
         
+        # Initialize L3: Long-term Memory (ChromaDB)
         self.L3 = LongTermMemory(
-            self.config,
-            self.message_bus,
-            collection_name=self.config.get("memory.long_term.collection_name", "lotus_memories")
+            chroma_client,
+            collection_name=self.config.get("memory.long_term.collection_name", "lotus_memories"),
+            embedding_model=self.config.get("memory.long_term.embedding_model", "all-MiniLM-L6-v2")
         )
         
+        # Initialize L4: Persistent Memory (PostgreSQL)
         self.L4 = PersistentMemory(
-            self.config,
-            self.message_bus,
-            table_name=self.config.get("memory.persistent.table_name", "knowledge")
+            postgres_conn,
+            table_name=self.config.get("memory.persistent.table_name", "lotus_knowledge")
         )
         
-        # Consolidation tracking
+        # Create database schema for L4
+        await self.L4.initialize()
+        
+        # Initialize retrieval system
+        self.retrieval = MemoryRetrieval(self.L1, self.L2, self.L3, self.L4)
+        
+        # Consolidation settings
         self.consolidation_enabled = self.config.get("memory.consolidation.enabled", True)
-        self.consolidation_threshold = self.config.get("memory.consolidation.importance_threshold", 0.5)
+        self.consolidation_interval = self.config.get("memory.consolidation.interval_minutes", 30)
         
         # Statistics
         self.stats = {
@@ -91,337 +85,248 @@ class MemoryModule(BaseModule):
             "last_consolidation": None
         }
         
+        # Start background consolidation if enabled
+        if self.consolidation_enabled:
+            asyncio.create_task(self._consolidation_loop())
+        
         self.logger.info("Memory system initialized successfully")
-        
+    
     @on_event("memory.store")
-    async def handle_store(self, event: Dict[str, Any]) -> None:
+    async def handle_store(self, event_data: Dict) -> None:
         """
-        Store a memory in the appropriate tier
+        Store a memory in appropriate tiers
         
-        Event data:
-        {
-            "content": "text or data to store",
-            "metadata": {"type": "conversation", "importance": 0.8},
-            "tier": "auto"  # or specific: L1, L2, L3, L4
-        }
+        Event data should contain:
+        - content: str
+        - memory_type: str (episodic, semantic, procedural, working)
+        - importance: float (0.0-1.0)
+        - metadata: dict (optional)
+        - source_module: str (optional)
         """
-        content = event.get("content")
-        metadata = event.get("metadata", {})
-        requested_tier = event.get("tier", "auto")
-        
-        if not content:
-            self.logger.warning("Store request with no content")
-            return
-        
-        # Determine tier
-        tier = self._determine_tier(content, metadata, requested_tier)
-        
-        # Create memory item
-        memory = MemoryItem(
-            id=self._generate_id(content),
-            content=content,
-            metadata=metadata,
-            timestamp=datetime.now(),
-            importance=metadata.get("importance", 0.5),
-            access_count=0
-        )
-        
-        # Store in appropriate tier
         try:
-            if tier == "L1":
-                await self.L1.store(memory)
-            elif tier == "L2":
-                await self.L2.store(memory)
-            elif tier == "L3":
-                await self.L3.store(memory)
-            elif tier == "L4":
-                await self.L4.store(memory)
+            # Parse event data
+            content = event_data.get("content")
+            if not content:
+                self.logger.warning("Store request with no content")
+                return
+            
+            memory_type_str = event_data.get("memory_type", "episodic")
+            memory_type = MemoryType(memory_type_str)
+            importance = event_data.get("importance", 0.5)
+            metadata = event_data.get("metadata", {})
+            source_module = event_data.get("source_module")
+            
+            # Create memory item
+            memory = MemoryItem(
+                content=content,
+                memory_type=memory_type,
+                timestamp=time.time(),
+                importance=importance,
+                metadata=metadata,
+                source_module=source_module
+            )
+            
+            # Store in appropriate tiers based on importance
+            memory_id = await self.L1.store(memory)  # Always store in L1
+            await self.L2.store(memory)               # Always store in L2
+            
+            tiers_stored = ["L1", "L2"]
+            
+            if importance >= 0.5:
+                await self.L3.store(memory)           # Store in L3 if important
+                tiers_stored.append("L3")
+            
+            if importance >= 0.8:
+                await self.L4.store(memory)           # Store in L4 if critical
+                tiers_stored.append("L4")
             
             self.stats["stored"] += 1
             
-            # Publish success event
+            # Publish confirmation
             await self.publish("memory.stored", {
-                "memory_id": memory.id,
-                "tier": tier,
-                "timestamp": memory.timestamp.isoformat()
+                "memory_id": memory_id,
+                "tiers": tiers_stored,
+                "timestamp": memory.timestamp
             })
             
-            self.logger.debug(f"Stored memory in {tier}: {memory.id}")
+            self.logger.debug(f"Stored memory in {len(tiers_stored)} tiers: {memory_id}")
             
         except Exception as e:
             self.logger.error(f"Failed to store memory: {e}")
             await self.publish("memory.error", {
-                "error": str(e),
-                "operation": "store"
+                "operation": "store",
+                "error": str(e)
             })
     
     @on_event("memory.retrieve")
-    async def handle_retrieve(self, event: Dict[str, Any]) -> None:
+    async def handle_retrieve(self, event_data: Dict) -> None:
         """
         Retrieve memories by query
         
-        Event data:
-        {
-            "query": "search query",
-            "tier": "all",  # or specific: L1, L2, L3, L4
-            "limit": 10,
-            "min_relevance": 0.5
-        }
+        Event data should contain:
+        - query: str
+        - max_results: int (optional, default: 10)
+        - strategy: str (optional, default: "comprehensive")
         """
-        query = MemoryQuery(
-            query=event.get("query", ""),
-            tier=event.get("tier"),
-            limit=event.get("limit", 10),
-            min_relevance=event.get("min_relevance", 0.5)
-        )
-        
-        # Retrieve from specified tier(s)
-        results = await self._retrieve_memories(query)
-        
-        # Rank results
-        ranked_results = self._rank_results(results, query.query)
-        
-        # Limit results
-        final_results = ranked_results[:query.limit]
-        
-        self.stats["retrieved"] += len(final_results)
-        
-        # Publish results
-        await self.publish("memory.retrieved", {
-            "query": query.query,
-            "count": len(final_results),
-            "results": [
-                {
-                    "id": m.id,
-                    "content": m.content,
-                    "metadata": m.metadata,
-                    "relevance": m.relevance_score,
-                    "tier": m.tier
-                }
-                for m in final_results
-            ]
-        })
-        
-        self.logger.debug(f"Retrieved {len(final_results)} memories for query: {query.query}")
-    
-    @on_event("memory.search")
-    async def handle_search(self, event: Dict[str, Any]) -> None:
-        """
-        Semantic search across all tiers
-        
-        Event data:
-        {
-            "query": "semantic search query",
-            "limit": 10
-        }
-        """
-        query = event.get("query", "")
-        limit = event.get("limit", 10)
-        
-        # Semantic search in L3 (vector store)
-        results = await self.L3.semantic_search(query, limit=limit)
-        
-        # Also check L1 and L2 for very recent matches
-        recent_l1 = await self.L1.search(query, limit=5)
-        recent_l2 = await self.L2.search(query, limit=5)
-        
-        # Combine and rank
-        all_results = results + recent_l1 + recent_l2
-        ranked = self._rank_results(all_results, query)
-        
-        await self.publish("memory.retrieved", {
-            "query": query,
-            "count": len(ranked[:limit]),
-            "results": [
-                {
-                    "id": m.id,
-                    "content": m.content,
-                    "relevance": m.relevance_score,
-                    "tier": m.tier
-                }
-                for m in ranked[:limit]
-            ]
-        })
-    
-    @periodic(interval=1800)  # Every 30 minutes
-    async def consolidate_memories(self) -> None:
-        """
-        Periodic memory consolidation
-        
-        Moves important memories between tiers:
-        - L1 â†' L2: Frequently accessed working memories
-        - L2 â†' L3: Important short-term to long-term
-        - L2 â†' L4: Facts and structured knowledge
-        """
-        if not self.consolidation_enabled:
-            return
-        
-        self.logger.info("Starting memory consolidation")
-        consolidated_count = 0
-        
         try:
-            # L1 â†' L2: Move frequently accessed items
-            l1_items = await self.L1.get_frequent_items(threshold=3)
-            for item in l1_items:
-                await self.L2.store(item)
-                consolidated_count += 1
+            query = event_data.get("query")
+            if not query:
+                self.logger.warning("Retrieve request with no query")
+                return
             
-            # L2 â†' L3: Move important items to long-term
-            l2_items = await self.L2.get_important_items(
-                threshold=self.consolidation_threshold
+            max_results = event_data.get("max_results", 10)
+            strategy_str = event_data.get("strategy", "comprehensive")
+            
+            # Build retrieval config
+            config = RetrievalConfig(
+                strategy=RetrievalStrategy(strategy_str),
+                max_results=max_results
             )
-            for item in l2_items:
-                await self.L3.store(item)
-                consolidated_count += 1
             
-            # L2 â†' L4: Extract facts and store persistently
-            facts = await self._extract_facts_from_l2()
-            for fact in facts:
-                await self.L4.store(fact)
-                consolidated_count += 1
+            # Retrieve memories using intelligent retrieval
+            memories = await self.retrieval.retrieve(query, config)
             
-            self.stats["consolidated"] += consolidated_count
-            self.stats["last_consolidation"] = datetime.now()
+            self.stats["retrieved"] += len(memories)
             
-            await self.publish("memory.consolidated", {
-                "count": consolidated_count,
-                "timestamp": datetime.now().isoformat()
+            # Publish results
+            await self.publish("memory.retrieved", {
+                "query": query,
+                "count": len(memories),
+                "memories": [m.to_dict() for m in memories]
             })
             
-            self.logger.info(f"Consolidated {consolidated_count} memories")
+            self.logger.debug(f"Retrieved {len(memories)} memories for query: {query}")
             
         except Exception as e:
-            self.logger.error(f"Consolidation failed: {e}")
+            self.logger.error(f"Failed to retrieve memories: {e}")
+            await self.publish("memory.error", {
+                "operation": "retrieve",
+                "error": str(e)
+            })
     
-    @tool("memory_stats")
+    @on_event("memory.get_context")
+    async def handle_get_context(self, event_data: Dict) -> None:
+        """
+        Get recent context for reasoning engine
+        
+        Event data should contain:
+        - minutes: int (default: 10)
+        """
+        try:
+            minutes = event_data.get("minutes", 10)
+            
+            # Get recent context from L1
+            context = await self.retrieval.get_recent_context(minutes)
+            
+            # Publish context
+            await self.publish("memory.context", {
+                "minutes": minutes,
+                "count": len(context),
+                "memories": [m.to_dict() for m in context]
+            })
+            
+            self.logger.debug(f"Provided {len(context)} memories as context")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get context: {e}")
+            await self.publish("memory.error", {
+                "operation": "get_context",
+                "error": str(e)
+            })
+    
+    @tool("get_memory_stats")
     async def get_stats(self) -> Dict[str, Any]:
-        """Get memory system statistics"""
-        return {
-            "stored_total": self.stats["stored"],
-            "retrieved_total": self.stats["retrieved"],
-            "consolidated_total": self.stats["consolidated"],
-            "last_consolidation": (
-                self.stats["last_consolidation"].isoformat()
-                if self.stats["last_consolidation"] else None
-            ),
-            "tier_counts": {
-                "L1": await self.L1.count(),
-                "L2": await self.L2.count(),
-                "L3": await self.L3.count(),
-                "L4": await self.L4.count()
-            }
-        }
+        """Get comprehensive memory system statistics"""
+        try:
+            # Get stats from retrieval system (includes all tiers)
+            system_stats = await self.retrieval.get_stats()
+            
+            # Add module-level stats
+            system_stats["module_stats"] = self.stats
+            
+            return system_stats
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get stats: {e}")
+            return {"error": str(e)}
+    
+    async def _consolidation_loop(self) -> None:
+        """
+        Background memory consolidation loop
+        
+        Periodically moves memories between tiers based on importance
+        and access patterns
+        """
+        interval_seconds = self.consolidation_interval * 60
+        
+        self.logger.info(f"Starting consolidation loop (interval: {self.consolidation_interval} min)")
+        
+        while True:
+            try:
+                await asyncio.sleep(interval_seconds)
+                
+                self.logger.info("Starting memory consolidation...")
+                
+                consolidated = await self._run_consolidation()
+                
+                self.stats["consolidated"] += consolidated
+                self.stats["last_consolidation"] = time.time()
+                
+                # Publish consolidation results
+                await self.publish("memory.consolidated", {
+                    "count": consolidated,
+                    "timestamp": time.time()
+                })
+                
+                self.logger.info(f"Consolidation complete: {consolidated} memories processed")
+                
+            except Exception as e:
+                self.logger.error(f"Consolidation error: {e}")
+    
+    async def _run_consolidation(self) -> int:
+        """
+        Run the actual consolidation process
+        
+        Returns:
+            Number of memories consolidated
+        """
+        total_consolidated = 0
+        threshold = self.config.get("memory.consolidation.importance_threshold", 0.5)
+        
+        # L1 → L2: Promote important working memories
+        l1_memories = await self.L1.get_all_for_consolidation()
+        for memory in l1_memories:
+            if self.L2.should_store_in_tier(memory):
+                await self.L2.store(memory)
+                total_consolidated += 1
+        
+        # L2 → L3: Promote to long-term semantic memory
+        l2_memories = await self.L2.retrieve("*", limit=1000)
+        for memory in l2_memories:
+            if self.L3.should_store_in_tier(memory):
+                await self.L3.store(memory)
+                total_consolidated += 1
+        
+        # L3 → L4: Promote critical facts to persistent storage
+        l3_memories = await self.L3.get_important_memories(min_importance=0.8)
+        for memory in l3_memories:
+            if self.L4.should_store_in_tier(memory):
+                await self.L4.store(memory)
+                total_consolidated += 1
+        
+        return total_consolidated
     
     async def shutdown(self) -> None:
-        """Shutdown memory systems gracefully"""
+        """Graceful shutdown of memory system"""
         self.logger.info("Shutting down memory system")
         
-        # Flush all tiers
-        await self.L1.flush()
-        await self.L2.flush()
-        await self.L3.flush()
-        await self.L4.flush()
+        # Health check all tiers before shutdown
+        health = {
+            "L1": await self.L1.health_check(),
+            "L2": await self.L2.health_check(),
+            "L3": await self.L3.health_check(),
+            "L4": await self.L4.health_check()
+        }
         
+        self.logger.info(f"Memory system health at shutdown: {health}")
         self.logger.info("Memory system shutdown complete")
-    
-    # Helper methods
-    
-    def _determine_tier(
-        self, 
-        content: str, 
-        metadata: Dict[str, Any],
-        requested: str
-    ) -> str:
-        """Determine which tier to store in"""
-        if requested in ["L1", "L2", "L3", "L4"]:
-            return requested
-        
-        # Auto-determine based on content and metadata
-        importance = metadata.get("importance", 0.5)
-        content_type = metadata.get("type", "unknown")
-        
-        # Facts go to L4
-        if content_type in ["fact", "knowledge", "structured"]:
-            return "L4"
-        
-        # High importance goes to L3
-        if importance > 0.7:
-            return "L3"
-        
-        # Recent conversation goes to L2
-        if content_type in ["conversation", "interaction"]:
-            return "L2"
-        
-        # Everything else starts in L1
-        return "L1"
-    
-    async def _retrieve_memories(
-        self, 
-        query: MemoryQuery
-    ) -> List[MemoryItem]:
-        """Retrieve memories from specified tier(s)"""
-        results = []
-        
-        if query.tier == "all" or query.tier is None:
-            # Search all tiers
-            results.extend(await self.L1.search(query.query))
-            results.extend(await self.L2.search(query.query))
-            results.extend(await self.L3.search(query.query))
-            results.extend(await self.L4.search(query.query))
-        elif query.tier == "L1":
-            results = await self.L1.search(query.query)
-        elif query.tier == "L2":
-            results = await self.L2.search(query.query)
-        elif query.tier == "L3":
-            results = await self.L3.search(query.query)
-        elif query.tier == "L4":
-            results = await self.L4.search(query.query)
-        
-        return results
-    
-    def _rank_results(
-        self, 
-        results: List[MemoryItem],
-        query: str
-    ) -> List[MemoryItem]:
-        """Rank results by relevance and recency"""
-        now = datetime.now()
-        
-        for item in results:
-            # Calculate recency score (0-1)
-            age_seconds = (now - item.timestamp).total_seconds()
-            recency_score = 1.0 / (1.0 + age_seconds / 3600)  # Decay over hours
-            
-            # Calculate access score
-            access_score = min(item.access_count / 10.0, 1.0)
-            
-            # Combined relevance score
-            item.relevance_score = (
-                0.4 * item.importance +
-                0.3 * recency_score +
-                0.2 * access_score +
-                0.1  # Base score
-            )
-        
-        # Sort by relevance
-        return sorted(results, key=lambda x: x.relevance_score, reverse=True)
-    
-    async def _extract_facts_from_l2(self) -> List[MemoryItem]:
-        """Extract factual information from short-term memory"""
-        # This would use NLP to extract facts
-        # For now, return important items that look like facts
-        items = await self.L2.get_important_items(threshold=0.8)
-        
-        facts = []
-        for item in items:
-            # Simple heuristic: short, declarative statements
-            if len(item.content) < 200 and "." in item.content:
-                facts.append(item)
-        
-        return facts
-    
-    def _generate_id(self, content: str) -> str:
-        """Generate unique ID for memory"""
-        return hashlib.sha256(
-            f"{content}{datetime.now().isoformat()}".encode()
-        ).hexdigest()[:16]

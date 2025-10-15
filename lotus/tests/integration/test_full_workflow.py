@@ -65,7 +65,7 @@ async def test_memory_system(nucleus: Nucleus):
     })
     
     await asyncio.sleep(2)
-    print("âœ" Memory system test complete!")
+    print("✔ Memory system test complete!")
 
 
 async def test_provider_system(nucleus: Nucleus):
@@ -88,7 +88,7 @@ async def test_provider_system(nucleus: Nucleus):
     })
     
     await asyncio.sleep(2)
-    print("âœ" Provider system test complete!")
+    print("✔ Provider system test complete!")
 
 
 async def test_perception_system(nucleus: Nucleus):
@@ -111,7 +111,7 @@ async def test_perception_system(nucleus: Nucleus):
     print("   - Working context")
     
     await asyncio.sleep(2)
-    print("âœ" Perception system test complete!")
+    print("✔ Perception system test complete!")
 
 
 async def demonstrate_module_communication(nucleus: Nucleus):
@@ -147,7 +147,7 @@ async def show_system_stats(nucleus: Nucleus):
     
     print(f"\nModules:")
     for name, module in nucleus.modules.items():
-        print(f"  âœ" {name}")
+        print(f"  ✔ {name}")
         print(f"     Type: {module.metadata.type}")
         print(f"     Priority: {module.metadata.priority}")
     

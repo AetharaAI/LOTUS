@@ -1,0 +1,211 @@
+name: computer_use
+version: 1.0.0
+type: integration
+priority: high
+description: "Computer control via Anthropic's Computer Use API - mouse, keyboard, screenshots"
+
+author: LOTUS Team
+license: MIT
+
+# What this module can do
+capabilities:
+  - screen_capture      # Take screenshots
+  - mouse_control       # Move cursor, click
+  - keyboard_control    # Type text, press keys
+  - window_management   # Focus windows, get active app
+  - ui_automation       # Interact with UI elements
+  - vision_analysis     # Understand what's on screen
+
+# Events this module subscribes to
+subscriptions:
+  - pattern: "cognition.computer_action"
+    description: "Execute computer control actions"
+  - pattern: "perception.screen_request"
+    description: "Capture screen when requested"
+  - pattern: "action.execute_command"
+    description: "Execute system commands"
+  - pattern: "system.ready"
+    description: "Initialize computer control on startup"
+
+# Events this module publishes
+publications:
+  - event: "computer.action_complete"
+    description: "Computer action finished"
+  - event: "computer.screenshot_captured"
+    description: "Screenshot taken"
+  - event: "computer.error"
+    description: "Computer action failed"
+  - event: "perception.screen_update"
+    description: "Screen content changed"
+
+# Dependencies
+dependencies:
+  modules:
+    - reasoning     # For intelligent action planning
+    - memory        # Remember screen states
+  
+  system:
+    - redis         # For caching screenshots
+  
+  python:
+    - "pyautogui>=0.9.54"       # Mouse/keyboard control
+    - "mss>=9.0.0"              # Fast screenshots
+    - "pillow>=10.0.0"          # Image processing
+    - "anthropic>=0.25.0"       # Claude API with computer use
+    - "opencv-python>=4.8.0"    # Image analysis
+
+# Configuration
+config:
+  # Screen capture
+  screen_capture:
+    enabled: true
+    interval_seconds: 2         # How often to capture
+    change_detection: true      # Only notify on changes
+    quality: 90                 # JPEG quality (1-100)
+    resize: true                # Resize for API efficiency
+    max_width: 1280
+    max_height: 720
+  
+  # Mouse control
+  mouse:
+    enabled: true
+    
+    # Safety limits
+    safety:
+      require_confirmation: false  # Ask before clicking?
+      forbidden_areas:             # Areas to never click
+        - x: 0
+          y: 0
+          width: 100
+          height: 50  # Avoid system menu
+      
+      click_delay: 0.1             # Delay between clicks
+    
+    # Movement
+    movement:
+      smooth: true                 # Smooth cursor movement
+      duration: 0.3                # Movement duration
+      tween: "easeInOutQuad"       # Easing function
+  
+  # Keyboard control
+  keyboard:
+    enabled: true
+    
+    safety:
+      forbidden_keys:               # Keys that can't be sent
+        - "ctrl+alt+delete"
+        - "cmd+q"                   # Quit app
+        - "alt+f4"                  # Close window
+      
+      typing_speed: 0.05            # Delay between keystrokes
+      allow_special_keys: true      # Allow function keys, etc.
+  
+  # Vision analysis
+  vision:
+    enabled: true
+    provider: "claude-sonnet-4"    # Use Claude for vision
+    
+    # What to detect
+    analyze:
+      - ui_elements               # Buttons, inputs, etc.
+      - text_content              # OCR
+      - application_state         # What's happening
+      - errors_warnings           # Detect issues
+    
+    # When to analyze
+    analyze_on:
+      - screen_change
+      - user_request
+      - error_detected
+  
+  # Autonomy settings
+  autonomy:
+    level: "high"  # low, medium, high
+    
+    # Actions that can be done automatically
+    auto_execute:
+      - screenshot
+      - mouse_move
+      - read_text
+      - detect_ui_elements
+    
+    # Always ask for these
+    require_confirmation:
+      - mouse_click
+      - keyboard_input
+      - window_close
+      - application_launch
+  
+  # Anthropic Computer Use Protocol
+  anthropic:
+    use_computer_use_api: true    # Use official API
+    
+    # Tool configuration
+    tools:
+      - computer         # Combined computer control
+      - bash             # Command execution
+      - text_editor      # Text editing
+    
+    # Display configuration
+    display:
+      width: 1920
+      height: 1080
+      display_number: 1
+
+# Tools this module provides
+tools:
+  - name: "screenshot"
+    description: "Capture screenshot of screen"
+    parameters: []
+  
+  - name: "mouse_move"
+    description: "Move mouse cursor"
+    parameters:
+      - x
+      - y
+  
+  - name: "mouse_click"
+    description: "Click mouse button"
+    parameters:
+      - button
+      - x
+      - y
+  
+  - name: "type_text"
+    description: "Type text via keyboard"
+    parameters:
+      - text
+  
+  - name: "press_key"
+    description: "Press keyboard key"
+    parameters:
+      - key
+  
+  - name: "get_active_window"
+    description: "Get active window info"
+    parameters: []
+  
+  - name: "analyze_screen"
+    description: "Analyze screen content with vision"
+    parameters:
+      - analysis_type
+
+# Health checks
+health:
+  check_interval: 30
+  checks:
+    - screen_capture_working
+    - mouse_control_working
+    - keyboard_control_working
+
+# Resources
+resources:
+  cpu_limit: 0.5
+  memory_limit: "512MB"
+  storage: "500MB"  # For screenshot cache
+
+# Safety and sandbox
+safety:
+  sandbox: false  # Computer use needs full access
+  audit_log: true  # Log all actions
+  require_approval_for_destructive_actions: true

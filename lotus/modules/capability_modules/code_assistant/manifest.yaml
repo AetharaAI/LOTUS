@@ -1,0 +1,231 @@
+name: code_assistant
+version: 1.0.0
+type: capability
+priority: high
+description: "Autonomous code assistant with real-time file watching, analysis, and generation"
+
+author: LOTUS Team
+license: MIT
+
+# What this module can do
+capabilities:
+  - code_analysis         # Analyze code quality, patterns, bugs
+  - code_generation       # Write new code
+  - code_refactoring      # Improve existing code
+  - bug_detection         # Find issues automatically
+  - architecture_advice   # System design recommendations
+  - real_time_monitoring  # Watch files for changes
+  - context_aware         # Understands project structure
+  - autonomous_fixes      # Can fix simple bugs without asking
+
+# Events this module subscribes to
+subscriptions:
+  - pattern: "perception.file_change"
+    description: "Detect when code files change"
+  - pattern: "cognition.code_request"
+    description: "Handle code-related requests"
+  - pattern: "perception.user_input"
+    description: "Analyze user requests for code tasks"
+  - pattern: "system.ready"
+    description: "Start file watching on startup"
+
+# Events this module publishes
+publications:
+  - event: "code.analysis_complete"
+    description: "Code analysis finished"
+  - event: "code.generated"
+    description: "New code created"
+  - event: "code.issue_detected"
+    description: "Bug or issue found"
+  - event: "code.suggestion"
+    description: "Improvement suggestion"
+  - event: "action.respond"
+    description: "Response to user with code"
+
+# Dependencies
+dependencies:
+  modules:
+    - reasoning     # For intelligent analysis
+    - memory        # Remember patterns and preferences
+  
+  system:
+    - redis         # For caching analysis results
+  
+  python:
+    - "anthropic>=0.25.0"    # For Claude API
+    - "tree-sitter>=0.20.0"  # For code parsing
+    - "watchdog>=3.0.0"      # For file watching
+    - "jedi>=0.19.0"         # For Python code completion
+    - "pylint>=3.0.0"        # For linting
+    - "black>=23.0.0"        # For formatting
+
+# Configuration
+config:
+  # File watching
+  file_watching:
+    enabled: true
+    directories:
+      - "."                    # Current project
+      - "${PROJECT_ROOT}"      # Project root if defined
+    
+    # File patterns to watch
+    patterns:
+      - "*.py"
+      - "*.js"
+      - "*.ts"
+      - "*.tsx"
+      - "*.jsx"
+      - "*.go"
+      - "*.rs"
+      - "*.java"
+      - "*.c"
+      - "*.cpp"
+      - "*.h"
+      - "*.yaml"
+      - "*.json"
+    
+    # Ignore patterns
+    ignore:
+      - "node_modules/"
+      - ".git/"
+      - "__pycache__/"
+      - "venv/"
+      - ".venv/"
+      - "dist/"
+      - "build/"
+    
+    # How quickly to react to changes
+    debounce_seconds: 2
+  
+  # Analysis settings
+  analysis:
+    # Auto-analyze on file change
+    auto_analyze: true
+    
+    # What to check
+    checks:
+      - syntax_errors
+      - logical_errors
+      - code_smells
+      - security_issues
+      - performance_issues
+      - style_violations
+    
+    # When to notify user
+    notify_on:
+      - syntax_errors        # Always
+      - security_issues      # Always
+      - logical_errors       # If confidence > 0.7
+      - code_smells          # If severe
+    
+    # Analysis depth
+    depth: "deep"  # shallow, medium, deep
+  
+  # Generation settings
+  generation:
+    # LLM provider for code generation
+    provider: "claude-sonnet-4"  # Best for code
+    
+    # Code style preferences
+    style:
+      python:
+        formatter: "black"
+        line_length: 88
+        type_hints: true
+      
+      javascript:
+        formatter: "prettier"
+        use_semicolons: false
+        quote_style: "single"
+      
+      typescript:
+        formatter: "prettier"
+        strict_mode: true
+    
+    # How much context to include
+    context_lines: 50  # Lines before/after
+    
+    # Testing
+    generate_tests: true
+    test_framework: "pytest"  # or jest, etc.
+  
+  # Autonomous behavior
+  autonomy:
+    # Fix obvious issues without asking
+    auto_fix:
+      enabled: true
+      
+      # What can be fixed automatically
+      allowed_fixes:
+        - syntax_errors       # Missing semicolons, etc.
+        - import_sorting      # Organize imports
+        - formatting          # Run formatters
+        - simple_refactoring  # Extract variables, etc.
+      
+      # Always ask for these
+      require_permission:
+        - delete_code
+        - major_refactoring
+        - API_changes
+    
+    # Proactive suggestions
+    suggest_improvements: true
+    suggestion_frequency: "on_save"  # on_save, hourly, daily
+  
+  # Learning and adaptation
+  learning:
+    # Learn Cory's coding style
+    learn_style: true
+    
+    # Remember successful solutions
+    remember_solutions: true
+    
+    # Adapt suggestions based on acceptance rate
+    adapt_suggestions: true
+
+# Tools this module provides
+tools:
+  - name: "analyze_code"
+    description: "Analyze code for issues"
+    parameters:
+      - file_path
+      - analysis_type
+  
+  - name: "generate_code"
+    description: "Generate new code"
+    parameters:
+      - description
+      - language
+      - context
+  
+  - name: "refactor_code"
+    description: "Refactor existing code"
+    parameters:
+      - file_path
+      - refactoring_type
+  
+  - name: "fix_issue"
+    description: "Fix detected issue"
+    parameters:
+      - issue_id
+      - auto_approve
+  
+  - name: "explain_code"
+    description: "Explain code functionality"
+    parameters:
+      - code_snippet
+      - detail_level
+
+# Health checks
+health:
+  check_interval: 60
+  checks:
+    - file_watcher_running
+    - ast_parser_ready
+    - llm_connection
+
+# Resources
+resources:
+  cpu_limit: 1.0
+  memory_limit: "1GB"
+  storage: "50MB"  # For caching analysis results

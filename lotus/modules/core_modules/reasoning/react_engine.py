@@ -14,6 +14,7 @@ This is the core intelligence loop of LOTUS.
 
 import asyncio
 import json
+import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum

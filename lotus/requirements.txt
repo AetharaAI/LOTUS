@@ -1,26 +1,41 @@
-# LOTUS/ASH - Python Dependencies
-# Core AI Operating System Requirements
+# ===================================================================
+# LOTUS AI Operating System - Python Dependencies
+# ===================================================================
+# Version: 1.0.0 (Session 7 - Final Integration)
+# Python: >= 3.11
+# Last Updated: October 15, 2025
+#
+# This file contains ALL dependencies needed to run LOTUS with
+# exact versions that are verified to work together.
+# ===================================================================
 
 # ===== CORE RUNTIME =====
+# Async and event loop
 asyncio==3.4.3
 aiofiles==23.2.1
-aioredis==2.0.1
+
+# Redis (Message Bus & L1/L2 Memory)
 redis==5.0.1
+hiredis==2.3.2  # C parser for Redis (performance boost)
+
+# Environment and configuration
 python-dotenv==1.0.0
 pyyaml==6.0.1
+
+# Data validation
 pydantic==2.5.3
 pydantic-settings==2.1.0
 
 # ===== DATABASE & STORAGE =====
-# PostgreSQL
+# PostgreSQL (L4 Persistent Memory)
 psycopg[binary]==3.1.16
 sqlalchemy==2.0.25
 alembic==1.13.1
 
-# Vector Database
+# Vector Database (L3 Long-term Memory)
 chromadb==0.4.22
 sentence-transformers==2.3.1
-faiss-cpu==1.7.4  # For fast vector search
+faiss-cpu==1.7.4
 
 # Caching
 diskcache==5.6.3
@@ -29,7 +44,7 @@ diskcache==5.6.3
 # Anthropic (Claude)
 anthropic==0.25.2
 
-# OpenAI
+# OpenAI (GPT)
 openai==1.12.0
 
 # Google (Gemini)
@@ -38,13 +53,19 @@ google-generativeai==0.3.2
 # Unified Provider Interface
 litellm==1.25.1
 
-# Local Models
+# Local Models (Ollama)
 ollama==0.1.6
 
-# ===== MEMORY & EMBEDDINGS =====
+# ===== EMBEDDINGS & NLP =====
+# Tokenization
 tiktoken==0.6.0
+
+# Numerical operations
 numpy==1.26.3
 pandas==2.1.4
+
+# Text processing
+regex==2023.12.25
 
 # ===== COMPUTER USE & AUTOMATION =====
 # Screen Control
@@ -57,31 +78,33 @@ opencv-python==4.9.0.80
 # Clipboard
 pyperclip==1.8.2
 
-# File System
+# File System Monitoring
 watchdog==3.0.0
 pathspec==0.12.1
 
-# ===== VOICE INTERFACE =====
+# ===== VOICE INTERFACE (Optional) =====
 # Speech-to-Text
 openai-whisper==20231117
 sounddevice==0.4.6
 soundfile==0.12.1
-pyaudio==0.2.14
+# pyaudio==0.2.14  # Commented out - requires system dependencies
 
 # Text-to-Speech
 elevenlabs==0.2.27
-pyttsx3==2.90  # Offline TTS fallback
+pyttsx3==2.90
 gtts==2.5.0
 
 # Audio Processing
 librosa==0.10.1
+audioread==3.0.1
 
-# ===== VISION & OCR =====
+# ===== VISION & OCR (Optional) =====
 pytesseract==0.3.10
 easyocr==1.7.1
 pdf2image==1.17.0
+pypdfium2==4.26.0
 
-# ===== WEB & BROWSER AUTOMATION =====
+# ===== WEB & BROWSER AUTOMATION (Optional) =====
 # Browser Control
 playwright==1.41.2
 selenium==4.17.2
@@ -91,23 +114,28 @@ webdriver-manager==4.0.1
 beautifulsoup4==4.12.3
 lxml==5.1.0
 html5lib==1.1
+
+# HTTP Clients
 requests==2.31.0
 httpx==0.26.0
+aiohttp==3.9.3
+urllib3==2.1.0
 
 # ===== API & NETWORKING =====
-# REST API
+# REST API Framework
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 websockets==12.0
 starlette==0.35.1
 
-# HTTP Client
-aiohttp==3.9.3
+# Server utilities
+gunicorn==21.2.0
 
 # ===== MODEL CONTEXT PROTOCOL (MCP) =====
-mcp==0.1.0
+# NOTE: MCP is under development - version may change
+# mcp==0.1.0  # Commented until official release
 
-# ===== IDE INTEGRATION =====
+# ===== IDE INTEGRATION (Optional) =====
 # Language Server Protocol
 python-lsp-server[all]==1.9.0
 python-lsp-jsonrpc==1.1.2
@@ -120,6 +148,7 @@ pylint==3.0.3
 mypy==1.8.0
 black==24.1.1
 isort==5.13.2
+autopep8==2.0.4
 
 # ===== LOGGING & MONITORING =====
 loguru==0.7.2
@@ -133,87 +162,150 @@ pytest-asyncio==0.23.3
 pytest-cov==4.1.0
 pytest-mock==3.12.0
 pytest-timeout==2.2.0
+pytest-xdist==3.5.0  # Parallel test execution
 faker==22.6.0
+hypothesis==6.98.3  # Property-based testing
 
 # ===== DEVELOPMENT TOOLS =====
 # Code Quality
 pre-commit==3.6.0
 ruff==0.1.14
 bandit==1.7.6
+safety==3.0.1
 
 # Type Checking
 types-redis==4.6.0.20240106
 types-pyyaml==6.0.12.12
 types-requests==2.31.0.20240125
+types-psycopg2==2.9.21.20
 
 # Documentation
 mkdocs==1.5.3
 mkdocs-material==9.5.6
 mkdocstrings[python]==0.24.0
 
-# ===== UTILITIES =====
-# CLI
+# ===== CLI & TERMINAL =====
+# CLI Framework
 click==8.1.7
-rich==13.7.0
 typer==0.9.0
-questionary==2.0.1
 
+# Terminal UI
+rich==13.7.0
+questionary==2.0.1
+prompt-toolkit==3.0.43
+
+# Progress bars
+tqdm==4.66.1
+
+# ===== UTILITIES =====
 # Date/Time
 python-dateutil==2.8.2
 pytz==2024.1
+arrow==1.3.0
 
 # Configuration
 configparser==6.0.0
 toml==0.10.2
+python-decouple==3.8
 
 # Process Management
 psutil==5.9.8
+supervisor==4.2.5
 
 # Security
 cryptography==42.0.2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
 
 # ===== DATA PROCESSING =====
 jsonschema==4.20.0
 marshmallow==3.20.2
 attrs==23.2.0
+cattrs==23.2.3
 
 # ===== TASK QUEUE (Optional) =====
 celery==5.3.6
 redis-om==0.2.1
+kombu==5.3.5
 
 # ===== RATE LIMITING =====
 slowapi==0.1.9
 limits==3.7.0
+py-ratelimit==1.0.0
 
-# ===== DEPLOYMENT =====
-gunicorn==21.2.0
-supervisor==4.2.5
+# ===== CACHING =====
+cachetools==5.3.2
+aiocache==0.12.2
+
+# ===== SERIALIZATION =====
+msgpack==1.0.7
+orjson==3.9.13  # Fast JSON
 
 # ===== MONITORING (Optional) =====
 prometheus-client==0.19.0
 opentelemetry-api==1.22.0
 opentelemetry-sdk==1.22.0
-
-# ===== VERSION INFO =====
-# Python >= 3.11 required
-# Redis >= 7.0 required
-# PostgreSQL >= 14 required
-# System: Linux, macOS, Windows (WSL2)
+opentelemetry-instrumentation-fastapi==0.43b0
 
 # ===== PLATFORM-SPECIFIC =====
 # Windows
 pywin32==306; sys_platform == 'win32'
 
 # macOS
-pyobjc==10.1; sys_platform == 'darwin'
+pyobjc-core==10.1; sys_platform == 'darwin'
+pyobjc-framework-Cocoa==10.1; sys_platform == 'darwin'
 
-# ===== OPTIONAL DEPENDENCIES =====
-# For GPU acceleration (local LLMs)
+# ===== OPTIONAL: GPU & LOCAL LLM =====
+# Uncomment if using local LLMs with GPU acceleration
 # torch==2.1.2
 # transformers==4.36.2
+# accelerate==0.25.0
+# bitsandbytes==0.41.3
 
-# For advanced NLP
+# ===== OPTIONAL: ADVANCED NLP =====
+# Uncomment for advanced NLP features
 # spacy==3.7.2
 # nltk==3.8.1
+# textblob==0.17.1
+# langdetect==1.0.9
+
+# ===== INSTALLATION NOTES =====
+# 
+# MINIMAL INSTALL (Core LOTUS only):
+#   pip install -r requirements.txt --no-optional
+#
+# FULL INSTALL (All features):
+#   pip install -r requirements.txt
+#
+# DEVELOPMENT INSTALL (With dev tools):
+#   pip install -r requirements.txt
+#   pip install -r requirements-dev.txt  # If we create this
+#
+# SYSTEM REQUIREMENTS:
+#   - Python >= 3.11
+#   - Redis >= 7.0 (via Docker or system package)
+#   - PostgreSQL >= 14 (via Docker or system package)
+#   - 4GB RAM minimum (8GB recommended)
+#   - 10GB disk space
+#
+# OPTIONAL SYSTEM DEPENDENCIES:
+#   - FFmpeg (for audio processing)
+#   - Tesseract (for OCR)
+#   - Chrome/Chromium (for browser automation)
+#
+# PLATFORM SUPPORT:
+#   - Linux (primary)
+#   - macOS (tested)
+#   - Windows (via WSL2 recommended)
+#
+# ===================================================================
+# For issues or questions:
+# - Check DEPLOYMENT.md for setup instructions
+# - Check TROUBLESHOOTING.md for common problems
+# - Open an issue on GitHub
+# ===================================================================
+
+
+
+

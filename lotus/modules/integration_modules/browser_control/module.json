@@ -1,0 +1,8 @@
+{
+  "name": "browser_control",
+  "version": "1.0.0",
+  "type": "integration",
+  "author": "LOTUS Team",
+  "description": "Browser control module",
+  "main": "logic.py"
+}

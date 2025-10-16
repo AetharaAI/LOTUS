@@ -1,0 +1,12 @@
+{
+  "name": "task_delegator",
+  "version": "1.0.0",
+  "type": "capability",
+  "author": "LOTUS Team",
+  "description": "Task delegation module",
+  "main": "logic.py",
+  "dependencies": [
+    "providers",
+    "reasoning"
+  ]
+}

@@ -1,0 +1,37 @@
+name: mcp_protocol
+version: 1.0.0
+type: integration
+priority: high
+description: "Model Context Protocol server/client for tool standardization"
+
+author: LOTUS Team
+license: MIT
+
+capabilities:
+  - mcp_server
+  - mcp_client
+  - tool_registry
+  - context_injection
+
+subscriptions:
+  - pattern: "mcp.register_tool"
+    description: "Register tool in MCP"
+  - pattern: "system.ready"
+    description: "Initialize MCP"
+
+publications:
+  - event: "mcp.tool_registered"
+    description: "Tool registered"
+  - event: "mcp.ready"
+    description: "MCP ready"
+
+dependencies:
+  python:
+    - "mcp>=0.1.0"
+    - "fastapi>=0.100.0"
+    - "uvicorn>=0.23.0"
+
+config:
+  server_enabled: true
+  server_port: 8765
+  auto_register_tools: true

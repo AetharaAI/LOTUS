@@ -1,0 +1,9 @@
+{
+  "name": "mcp_protocol",
+  "version": "1.0.0",
+  "type": "integration",
+  "author": "LOTUS Team",
+  "description": "MCP Protocol integration",
+  "main": "logic.py",
+  "dependencies": []
+}

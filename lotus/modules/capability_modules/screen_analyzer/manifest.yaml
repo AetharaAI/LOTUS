@@ -1,0 +1,55 @@
+name: screen_analyzer
+version: 1.0.0
+type: capability
+priority: high
+description: "Real-time screen capture and analysis for visual awareness"
+
+author: LOTUS Team
+license: MIT
+
+capabilities:
+  - screen_capture
+  - change_detection
+  - ocr
+  - visual_analysis
+  - element_detection
+
+subscriptions:
+  - pattern: "perception.screen_analyze"
+    description: "Request screen analysis"
+  - pattern: "perception.start_monitoring"
+    description: "Start continuous monitoring"
+  - pattern: "perception.stop_monitoring"
+    description: "Stop monitoring"
+  - pattern: "system.ready"
+    description: "Initialize on startup"
+
+publications:
+  - event: "perception.screen_changed"
+    description: "Screen content changed"
+  - event: "perception.elements_detected"
+    description: "UI elements detected"
+  - event: "perception.text_extracted"
+    description: "Text extracted via OCR"
+  - event: "perception.screen_snapshot"
+    description: "Full screen snapshot"
+
+dependencies:
+  python:
+    - mss>=7.0.0
+    - pillow>=10.0.0
+    - pytesseract>=0.3.10
+    - pyautogui>=0.9.53
+
+config:
+  monitoring_enabled: true
+  capture_interval: 2  # seconds
+  change_threshold: 0.15  # 15% change detection
+  extract_text: true
+  detect_elements: true
+  max_resolution: [3840, 2160]
+  jpeg_quality: 85
+
+resources:
+  cpu_limit: 0.3
+  memory_limit: "512MB"

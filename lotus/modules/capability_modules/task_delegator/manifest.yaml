@@ -1,0 +1,39 @@
+name: task_delegator
+version: 1.0.0
+type: capability
+priority: high
+description: "Task analysis and intelligent delegation across LLM providers"
+
+author: LOTUS Team
+license: MIT
+
+capabilities:
+  - task_analysis
+  - provider_routing
+  - parallel_execution
+  - result_synthesis
+
+subscriptions:
+  - pattern: "cognition.task"
+    description: "Task received"
+  - pattern: "task.analyze"
+    description: "Analyze task complexity"
+
+publications:
+  - event: "task.delegated"
+    description: "Task delegated to provider"
+  - event: "task.complete"
+    description: "Task completed"
+
+dependencies:
+  python:
+    - numpy>=1.24.0
+
+config:
+  enable_parallel: true
+  analysis_enabled: true
+  routing_strategy: "intelligent"
+
+resources:
+  cpu_limit: 0.5
+  memory_limit: "512MB"

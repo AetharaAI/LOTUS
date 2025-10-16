@@ -1,0 +1,19 @@
+{
+  "name": "screen_analyzer",
+  "version": "1.0.0",
+  "type": "capability",
+  "author": "LOTUS Team",
+  "description": "Real-time screen capture and analysis",
+  "main": "logic.py",
+  "dependencies": [
+    "reasoning",
+    "memory"
+  ],
+  "keywords": [
+    "screen",
+    "vision",
+    "ocr",
+    "capture",
+    "analysis"
+  ]
+}

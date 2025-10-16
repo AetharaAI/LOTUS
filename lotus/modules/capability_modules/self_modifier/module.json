@@ -1,0 +1,12 @@
+{
+  "name": "self_modifier",
+  "version": "1.0.0",
+  "type": "capability",
+  "author": "LOTUS Team",
+  "description": "Self-modification system",
+  "main": "logic.py",
+  "dependencies": [
+    "reasoning",
+    "providers"
+  ]
+}

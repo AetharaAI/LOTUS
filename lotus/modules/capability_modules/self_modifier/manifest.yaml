@@ -1,0 +1,45 @@
+name: self_modifier
+version: 1.0.0
+type: capability
+priority: high
+description: "Self-modification system - AI writes and deploys its own modules"
+
+author: LOTUS Team
+license: MIT
+
+capabilities:
+  - module_generation
+  - code_validation
+  - sandbox_testing
+  - auto_deployment
+
+subscriptions:
+  - pattern: "self.generate_module"
+    description: "Generate new module"
+  - pattern: "self.test_module"
+    description: "Test module in sandbox"
+  - pattern: "self.deploy_module"
+    description: "Deploy module to live system"
+
+publications:
+  - event: "self.module_generated"
+    description: "Module generated"
+  - event: "self.module_tested"
+    description: "Module tested"
+  - event: "self.module_deployed"
+    description: "Module deployed"
+
+dependencies:
+  python:
+    - black>=23.0.0
+    - pylint>=2.17.0
+
+config:
+  sandbox_enabled: true
+  auto_deploy: false
+  validation_required: true
+  requires_approval: true
+
+resources:
+  cpu_limit: 0.6
+  memory_limit: "512MB"

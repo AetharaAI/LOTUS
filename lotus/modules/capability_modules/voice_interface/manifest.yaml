@@ -1,0 +1,52 @@
+name: voice_interface
+version: 1.0.0
+type: capability
+priority: high
+description: "Voice interaction - STT, TTS, wake word detection"
+
+author: LOTUS Team
+license: MIT
+
+capabilities:
+  - speech_to_text
+  - text_to_speech
+  - wake_word_detection
+  - voice_streaming
+
+subscriptions:
+  - pattern: "perception.voice_input"
+    description: "Voice input received"
+  - pattern: "action.speak"
+    description: "Speak text via TTS"
+  - pattern: "voice.start_listening"
+    description: "Start listening for voice"
+  - pattern: "voice.stop_listening"
+    description: "Stop listening"
+
+publications:
+  - event: "perception.speech_detected"
+    description: "Speech recognized"
+  - event: "perception.wake_word_detected"
+    description: "Wake word detected"
+  - event: "voice.ready"
+    description: "Voice interface ready"
+
+dependencies:
+  python:
+    - openai-whisper>=20230314
+    - pyttsx3>=2.90
+    - pyaudio>=0.2.13
+    - numpy>=1.24.0
+
+config:
+  stt_enabled: true
+  tts_enabled: true
+  wake_word_enabled: true
+  wake_word: "lotus"
+  language: "en"
+  audio_rate: 16000
+  audio_channels: 1
+
+resources:
+  cpu_limit: 0.4
+  memory_limit: "256MB"

@@ -1,0 +1,22 @@
+name: ide_integration
+version: 1.0.0
+type: integration
+priority: normal
+description: "VS Code, JetBrains, and IDE integration"
+
+author: LOTUS Team
+license: MIT
+
+capabilities:
+  - ide_api
+  - vscode_extension
+  - jetbrains_plugin
+  - code_navigation
+
+subscriptions:
+  - pattern: "ide.open_file"
+  - pattern: "ide.go_to_line"
+
+dependencies:
+  python:
+    - "lsprotocol>=2023.0.0"

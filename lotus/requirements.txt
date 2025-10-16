@@ -121,6 +121,10 @@ httpx==0.26.0
 aiohttp==3.9.3
 urllib3==2.1.0
 
+# requests>=2.31.0          # For xAI HTTP requests
+aiohttp>=3.9.0            # For async xAI requests
+
+
 # ===== API & NETWORKING =====
 # REST API Framework
 fastapi==0.109.0

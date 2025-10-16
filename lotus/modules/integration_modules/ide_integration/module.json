@@ -1,0 +1,8 @@
+{
+  "name": "ide_integration",
+  "version": "1.0.0",
+  "type": "integration",
+  "author": "LOTUS Team",
+  "description": "IDE integration module",
+  "main": "logic.py"
+}

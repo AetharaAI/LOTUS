@@ -1,0 +1,12 @@
+{
+  "name": "voice_interface",
+  "version": "1.0.0",
+  "type": "capability",
+  "author": "LOTUS Team",
+  "description": "Voice interaction module",
+  "main": "logic.py",
+  "dependencies": [
+    "perception",
+    "providers"
+  ]
+}

@@ -15,7 +15,7 @@ asyncio==3.4.3
 aiofiles==23.2.1
 
 # Redis (Message Bus & L1/L2 Memory)
-redis==5.0.1
+redis
 hiredis==2.3.2  # C parser for Redis (performance boost)
 
 # Environment and configuration
@@ -23,8 +23,8 @@ python-dotenv==1.0.0
 pyyaml==6.0.1
 
 # Data validation
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic
+pydantic-settings
 
 # ===== DATABASE & STORAGE =====
 # PostgreSQL (L4 Persistent Memory)
@@ -42,10 +42,10 @@ diskcache==5.6.3
 
 # ===== LLM PROVIDERS =====
 # Anthropic (Claude)
-anthropic==0.25.2
+anthropic
 
 # OpenAI (GPT)
-openai==1.12.0
+openai
 
 # Google (Gemini)
 google-generativeai==0.3.2
@@ -90,7 +90,7 @@ soundfile==0.12.1
 # pyaudio==0.2.14  # Commented out - requires system dependencies
 
 # Text-to-Speech
-elevenlabs==0.2.27
+elevenlabs
 pyttsx3==2.90
 gtts==2.5.0
 
@@ -100,7 +100,7 @@ audioread==3.0.1
 
 # ===== VISION & OCR (Optional) =====
 pytesseract==0.3.10
-easyocr==1.7.1
+# easyocr==1.7.1
 pdf2image==1.17.0
 pypdfium2==4.26.0
 
@@ -117,18 +117,16 @@ html5lib==1.1
 
 # HTTP Clients
 requests==2.31.0
-httpx==0.26.0
+httpx==0.25.2
 aiohttp==3.9.3
 urllib3==2.1.0
 
-# requests>=2.31.0          # For xAI HTTP requests
-aiohttp>=3.9.0            # For async xAI requests
 
 
 # ===== API & NETWORKING =====
 # REST API Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
+fastapi
+uvicorn[standard]
 websockets==12.0
 starlette==0.35.1
 
@@ -175,7 +173,7 @@ hypothesis==6.98.3  # Property-based testing
 pre-commit==3.6.0
 ruff==0.1.14
 bandit==1.7.6
-safety==3.0.1
+safety
 
 # Type Checking
 types-redis==4.6.0.20240106
@@ -196,7 +194,7 @@ typer==0.9.0
 # Terminal UI
 rich==13.7.0
 questionary==2.0.1
-prompt-toolkit==3.0.43
+prompt-toolkit==3.0.36
 
 # Progress bars
 tqdm==4.66.1
@@ -236,7 +234,7 @@ kombu==5.3.5
 # ===== RATE LIMITING =====
 slowapi==0.1.9
 limits==3.7.0
-py-ratelimit==1.0.0
+
 
 # ===== CACHING =====
 cachetools==5.3.2
@@ -309,7 +307,3 @@ pyobjc-framework-Cocoa==10.1; sys_platform == 'darwin'
 # - Check TROUBLESHOOTING.md for common problems
 # - Open an issue on GitHub
 # ===================================================================
-
-
-
-

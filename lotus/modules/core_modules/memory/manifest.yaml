@@ -2,85 +2,65 @@ name: memory
 version: 1.0.0
 type: core
 priority: critical
-description: "4-tier memory system - Working, Short-term, Long-term, and Persistent memory"
-
+description: 4-tier memory system - Working, Short-term, Long-term, and Persistent
+  memory
 author: LOTUS Team
 license: MIT
-
-# Module capabilities
 capabilities:
-  - memory_storage
-  - memory_retrieval
-  - memory_consolidation
-  - semantic_search
-  - memory_ranking
-
-# Events this module subscribes to
+- memory_storage
+- memory_retrieval
+- memory_consolidation
+- semantic_search
+- memory_ranking
 subscriptions:
-  - pattern: "memory.store"
-    description: "Store new information in appropriate tier"
-  - pattern: "memory.retrieve"
-    description: "Retrieve memories by query"
-  - pattern: "memory.search"
-    description: "Semantic search across all tiers"
-  - pattern: "system.ready"
-    description: "Initialize memory systems on startup"
-  - pattern: "system.shutdown"
-    description: "Flush and save memory state"
-
-# Events this module publishes
+- pattern: memory.store
+  description: Store new information in appropriate tier
+- pattern: memory.retrieve
+  description: Retrieve memories by query
+- pattern: memory.search
+  description: Semantic search across all tiers
+- pattern: system.ready
+  description: Initialize memory systems on startup
+- pattern: system.shutdown
+  description: Flush and save memory state
 publications:
-  - event: "memory.stored"
-    description: "Memory successfully stored"
-  - event: "memory.retrieved"
-    description: "Memory retrieval results"
-  - event: "memory.consolidated"
-    description: "Memory consolidation completed"
-  - event: "memory.tier_changed"
-    description: "Memory moved between tiers"
-
-# Dependencies
-dependencies: []
-
-# Configuration
+- event: memory.stored
+  description: Memory successfully stored
+- event: memory.retrieved
+  description: Memory retrieval results
+- event: memory.consolidated
+  description: Memory consolidation completed
+- event: memory.tier_changed
+  description: Memory moved between tiers
+dependencies:
+  modules: []
+  system: []
+  packages: []
 config:
-  # L1: Working Memory (Redis)
   working_memory:
-    ttl_seconds: 600  # 10 minutes
+    ttl_seconds: 600
     max_items: 100
-    
-  # L2: Short-term Memory (Redis Streams)
   short_term:
     ttl_hours: 24
     max_items: 1000
-    
-  # L3: Long-term Memory (ChromaDB)
   long_term:
-    collection_name: "lotus_memories"
-    embedding_model: "all-MiniLM-L6-v2"
-    distance_metric: "cosine"
-    
-  # L4: Persistent Memory (PostgreSQL)
+    collection_name: lotus_memories
+    embedding_model: all-MiniLM-L6-v2
+    distance_metric: cosine
   persistent:
-    table_name: "knowledge"
+    table_name: knowledge
     auto_index: true
-    
-  # Consolidation
   consolidation:
     enabled: true
     interval_minutes: 30
     importance_threshold: 0.5
-
-# Health checks
 health:
   check_interval: 60
   checks:
-    - redis_connection
-    - postgres_connection
-    - chromadb_ready
-
-# Resources
+  - redis_connection
+  - postgres_connection
+  - chromadb_ready
 resources:
   cpu_limit: 0.5
-  memory_limit: "512MB"
-  storage: "10GB"
+  memory_limit: 512MB
+  storage: 10GB

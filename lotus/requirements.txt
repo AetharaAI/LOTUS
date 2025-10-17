@@ -31,7 +31,8 @@ pydantic-settings
 psycopg[binary]==3.1.16
 sqlalchemy==2.0.25
 alembic==1.13.1
-
+# For async DB support
+asyncpg
 # Vector Database (L3 Long-term Memory)
 chromadb==0.4.22
 sentence-transformers==2.3.1

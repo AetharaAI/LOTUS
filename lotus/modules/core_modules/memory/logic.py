@@ -34,9 +34,9 @@ class MemoryModule(BaseModule):
         self.logger.info("Initializing 4-tier memory system")
         
         # Get connections from nucleus
-        redis_client = self.config.get("connections.redis")
-        chroma_client = self.config.get("connections.chromadb")
-        postgres_conn = self.config.get("connections.postgres")
+        redis_client = self.config.get("services.redis")
+        chroma_client = self.config.get("services.chroma")
+        postgres_conn = self.config.get("services.db_engine")
         
         # Initialize L1: Working Memory (Redis)
         self.L1 = WorkingMemory(
@@ -53,8 +53,11 @@ class MemoryModule(BaseModule):
         )
         
         # Initialize L3: Long-term Memory (ChromaDB)
+        from sentence_transformers import SentenceTransformer
+        embedder = SentenceTransformer(self.config.get("memory.long_term.embedding_model", "all-MiniLM-L6-v2"))
         self.L3 = LongTermMemory(
             chroma_client,
+            embedder,
             collection_name=self.config.get("memory.long_term.collection_name", "lotus_memories"),
             embedding_model=self.config.get("memory.long_term.embedding_model", "all-MiniLM-L6-v2")
         )

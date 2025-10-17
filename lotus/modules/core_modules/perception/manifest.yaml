@@ -2,89 +2,73 @@ name: perception
 version: 1.0.0
 type: core
 priority: high
-description: "Input perception system - File watching, clipboard monitoring, and input processing"
-
+description: Input perception system - File watching, clipboard monitoring, and input
+  processing
 author: LOTUS Team
 license: MIT
-
-# Module capabilities
 capabilities:
-  - file_watching
-  - clipboard_monitoring
-  - input_normalization
-  - change_detection
-  - context_awareness
-
-# Events this module subscribes to
+- file_watching
+- clipboard_monitoring
+- input_normalization
+- change_detection
+- context_awareness
 subscriptions:
-  - pattern: "system.ready"
-    description: "Start perception systems on startup"
-  - pattern: "perception.start_watching"
-    description: "Start watching a path"
-  - pattern: "perception.stop_watching"
-    description: "Stop watching a path"
-  - pattern: "system.shutdown"
-    description: "Stop all watchers"
-
-# Events this module publishes
+- pattern: system.ready
+  description: Start perception systems on startup
+- pattern: perception.start_watching
+  description: Start watching a path
+- pattern: perception.stop_watching
+  description: Stop watching a path
+- pattern: system.shutdown
+  description: Stop all watchers
 publications:
-  - event: "file.created"
-    description: "New file detected"
-  - event: "file.modified"
-    description: "File modified"
-  - event: "file.deleted"
-    description: "File deleted"
-  - event: "clipboard.changed"
-    description: "Clipboard content changed"
-  - event: "input.received"
-    description: "Processed input received"
-  - event: "context.changed"
-    description: "Working context changed"
-
-# Dependencies
-dependencies: []
-
-# Configuration
+- event: file.created
+  description: New file detected
+- event: file.modified
+  description: File modified
+- event: file.deleted
+  description: File deleted
+- event: clipboard.changed
+  description: Clipboard content changed
+- event: input.received
+  description: Processed input received
+- event: context.changed
+  description: Working context changed
+dependencies:
+  modules: []
+  system: []
+  packages: []
 config:
-  # File watching
   file_watching:
     enabled: true
     watch_paths:
-      - "~/projects"
-      - "~/Documents"
+    - ~/projects
+    - ~/Documents
     ignore_patterns:
-      - "*.pyc"
-      - "__pycache__"
-      - ".git"
-      - "node_modules"
-      - ".env"
+    - '*.pyc'
+    - __pycache__
+    - .git
+    - node_modules
+    - .env
     debounce_seconds: 2
-    
-  # Clipboard monitoring  
   clipboard:
     enabled: true
     poll_interval: 1.0
-    max_size: 10000  # bytes
+    max_size: 10000
     ignore_patterns:
-      - "password"
-      - "api_key"
-      - "secret"
-    
-  # Context detection
+    - password
+    - api_key
+    - secret
   context:
     enabled: true
     infer_from_files: true
     infer_from_clipboard: true
     update_interval: 10
-
-# Health checks
 health:
   check_interval: 60
   checks:
-    - watchers_active
-    - clipboard_accessible
-
-# Resources
+  - watchers_active
+  - clipboard_accessible
 resources:
   cpu_limit: 0.3
-  memory_limit: "256MB"
+  memory_limit: 256MB

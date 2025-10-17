@@ -2,108 +2,87 @@ name: providers
 version: 1.0.0
 type: core
 priority: critical
-description: "Multi-provider LLM access - Claude, GPT, Gemini, Ollama with intelligent routing"
-
+description: Multi-provider LLM access - Claude, GPT, Gemini, Ollama with intelligent
+  routing
 author: LOTUS Team
 license: MIT
-
-# Module capabilities
 capabilities:
-  - llm_completion
-  - provider_switching
-  - load_balancing
-  - fallback_handling
-  - cost_optimization
-
-# Events this module subscribes to
+- llm_completion
+- provider_switching
+- load_balancing
+- fallback_handling
+- cost_optimization
 subscriptions:
-  - pattern: "llm.complete"
-    description: "Generate LLM completion"
-  - pattern: "llm.stream"
-    description: "Stream LLM completion"
-  - pattern: "provider.switch"
-    description: "Switch to different provider"
-  - pattern: "system.ready"
-    description: "Initialize providers on startup"
-
-# Events this module publishes
+- pattern: llm.complete
+  description: Generate LLM completion
+- pattern: llm.stream
+  description: Stream LLM completion
+- pattern: provider.switch
+  description: Switch to different provider
+- pattern: system.ready
+  description: Initialize providers on startup
 publications:
-  - event: "llm.response"
-    description: "LLM completion result"
-  - event: "llm.stream_chunk"
-    description: "Streaming response chunk"
-  - event: "provider.switched"
-    description: "Provider switch completed"
-  - event: "provider.error"
-    description: "Provider error occurred"
-  - event: "provider.fallback"
-    description: "Fell back to backup provider"
-
-# Dependencies
-dependencies: []
-
-# Configuration
+- event: llm.response
+  description: LLM completion result
+- event: llm.stream_chunk
+  description: Streaming response chunk
+- event: provider.switched
+  description: Provider switch completed
+- event: provider.error
+  description: Provider error occurred
+- event: provider.fallback
+  description: Fell back to backup provider
+dependencies:
+  modules: []
+  system: []
+  packages: []
 config:
-  # Default provider
-  default_provider: "claude-sonnet-4"
-  
-  # Provider settings
+  default_provider: claude-sonnet-4
   anthropic:
     enabled: true
     models:
-      - claude-opus-4
-      - claude-sonnet-4.5
-      - claude-sonnet-4
-    default_model: "claude-sonnet-4"
-    
+    - claude-opus-4
+    - claude-sonnet-4.5
+    - claude-sonnet-4
+    default_model: claude-sonnet-4
   openai:
     enabled: true
     models:
-      - gpt-4o
-      - gpt-4-turbo
-      - gpt-3.5-turbo
-    default_model: "gpt-4o"
-    
+    - gpt-4o
+    - gpt-4-turbo
+    - gpt-3.5-turbo
+    default_model: gpt-4o
   google:
     enabled: false
     models:
-      - gemini-2.0-flash-exp
-      - gemini-pro
-    default_model: "gemini-2.0-flash-exp"
-    
+    - gemini-2.0-flash-exp
+    - gemini-pro
+    default_model: gemini-2.0-flash-exp
   ollama:
     enabled: true
-    base_url: "http://localhost:11434"
+    base_url: http://localhost:11434
     models:
-      - deepseek-coder
-      - llama3
-      - mistral
-    default_model: "deepseek-coder"
-  
-  # Routing rules
+    - deepseek-coder
+    - llama3
+    - mistral
+    default_model: deepseek-coder
   routing:
-    fast_tasks: "gpt-3.5-turbo"
-    complex_tasks: "claude-opus-4"
-    coding_tasks: "claude-sonnet-4"
-    local_tasks: "deepseek-coder"
-    
-  # Fallback chain
+    fast_tasks: gpt-3.5-turbo
+    complex_tasks: claude-opus-4
+    coding_tasks: claude-sonnet-4
+    local_tasks: deepseek-coder
   fallback:
     enabled: true
     chain:
-      - "claude-sonnet-4"
-      - "gpt-4o"
-      - "deepseek-coder"
-
-# Health checks
+    - claude-sonnet-4
+    - gpt-4o
+    - deepseek-coder
 health:
-  check_interval: 300  # 5 minutes
+  check_interval: 300
   checks:
-    - provider_availability
-    - api_key_validity
-    - rate_limits
-
-# Resources
+  - provider_availability
+  - api_key_validity
+  - rate_limits
 resources:
   cpu_limit: 0.2
-  memory_limit: "256MB"
+  memory_limit: 256MB

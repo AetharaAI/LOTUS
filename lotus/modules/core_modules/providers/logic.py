@@ -72,32 +72,28 @@ class ProviderModule(BaseModule):
         # Anthropic
         if self.config.get("providers.anthropic.enabled", True):
             self.providers["anthropic"] = AnthropicProvider(
-                self.config,
-                api_key=self.config.get("ANTHROPIC_API_KEY")
+                {"api_key": self.config.get("ANTHROPIC_API_KEY")}
             )
             self.logger.info("Initialized Anthropic provider")
-        
+
         # OpenAI
         if self.config.get("providers.openai.enabled", True):
             self.providers["openai"] = OpenAIProvider(
-                self.config,
-                api_key=self.config.get("OPENAI_API_KEY")
+                {"api_key": self.config.get("OPENAI_API_KEY")}
             )
             self.logger.info("Initialized OpenAI provider")
-        
+
         # Google
         if self.config.get("providers.google.enabled", False):
             self.providers["google"] = GoogleProvider(
-                self.config,
-                api_key=self.config.get("GOOGLE_API_KEY")
+                {"api_key": self.config.get("GOOGLE_API_KEY")}
             )
             self.logger.info("Initialized Google provider")
         
         # Ollama (local)
         if self.config.get("providers.ollama.enabled", True):
             self.providers["ollama"] = OllamaProvider(
-                self.config,
-                base_url=self.config.get("providers.ollama.base_url", "http://localhost:11434")
+                {"base_url": self.config.get("providers.ollama.base_url", "http://localhost:11434")}
             )
             self.logger.info("Initialized Ollama provider")
         

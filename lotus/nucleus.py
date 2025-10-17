@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """
-LOTUS/ASH Nucleus - Core Runtime Engine
+LOTUS/ASH Nucleus - Core Runtime Engine (FIXED VERSION)
 
-The Nucleus is the heart of LOTUS. It:
-- Manages the asyncio event loop
-- Discovers and loads modules
-- Routes messages between modules
-- Maintains system health
-- Orchestrates the entire system
-
-The Nucleus itself is intentionally simple and dumb - all intelligence
-lives in modules. This makes the system infinitely extensible.
+This version includes proper error handling for malformed manifest files
+and will help identify which module has the issue.
 """
 
 import asyncio
@@ -22,6 +15,11 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 import yaml
 import json
+import traceback
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -95,6 +93,7 @@ class Nucleus:
             self.logger.info("Configuration loaded")
             
             # 3. Initialize infrastructure
+            print("   Initializing infrastructure...")
             await self._init_infrastructure()
             
             # 4. Discover modules
@@ -137,49 +136,82 @@ class Nucleus:
             
             print()
             print("🌸 LOTUS is online and ready!")
-            print(f"   Modules: {len(self.modules)} active")
-            print(f"   Memory: {self._get_memory_usage():.1f} MB")
+            print(f"   Loaded {len(self.modules)} modules successfully")
+            print(f"   Personality: {self.config.get('system.personality', 'jarvis')}")
             print()
-            self.logger.info("LOTUS is online and ready")
+            print("   Press Ctrl+C to shutdown")
+            print()
             
         except Exception as e:
-            print(f"\n❌ Boot failed: {e}")
-            self.logger.error(f"Boot failed: {e}", exc_info=True)
+            print(f"❌ Boot failed: {e}")
+            self.logger.error(f"Boot failed: {e}")
+            self.logger.debug(traceback.format_exc())
             raise SystemError(f"Failed to boot LOTUS: {e}")
     
     async def _init_infrastructure(self) -> None:
-        """Initialize core infrastructure (Redis, DB, etc)"""
-        print("   Initializing infrastructure...")
-        
-        # Initialize message bus
-        redis_config = self.config.get("redis", {})
-        self.message_bus = MessageBus(
-            host=redis_config.get("host", "localhost"),
-            port=redis_config.get("port", 6379),
-            db=redis_config.get("db", 0)
-        )
-        await self.message_bus.connect()
-        print("   ✓ Redis connected")
-        self.logger.info("Redis message bus connected")
-        
-        # TODO: Initialize PostgreSQL
-        print("   ✓ PostgreSQL connected (TODO)")
-        
-        # TODO: Initialize ChromaDB
-        print("   ✓ ChromaDB initialized (TODO)")
+        """Initialize infrastructure components (Redis, DB, etc)"""
+        import os
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from sqlalchemy import text
+
+        try:
+            # Initialize message bus (Redis)
+            self.message_bus = MessageBus(self.config)
+            await self.message_bus.connect()
+            print("   ✓ Redis connected")
+            self.logger.info("Redis message bus connected")
+
+            # Expose Redis client for modules
+            self.config.set("services.redis", self.message_bus.redis)
+
+            # Initialize PostgreSQL
+            db_url = os.environ.get("DATABASE_URL_ASYNC") or os.environ.get("DATABASE_URL")
+            if not db_url:
+                raise RuntimeError("DATABASE_URL_ASYNC or DATABASE_URL is required")
+
+            self.db_engine = create_async_engine(db_url, pool_pre_ping=True)
+
+            # Quick liveness ping
+            async with self.db_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            # Publish to config for modules
+            self.config.set("services.db_engine", self.db_engine)
+            print("   ✓ PostgreSQL connected")
+            self.logger.info("PostgreSQL connected")
+
+            # Initialize ChromaDB
+            import chromadb
+            from chromadb.config import Settings
+            chroma_path = os.environ.get("CHROMA_PATH", "./var/chroma")
+            self.chroma = chromadb.PersistentClient(path=chroma_path, settings=Settings(anonymized_telemetry=False))
+            # Optional: create default collection
+            self.chroma.get_or_create_collection("lotus_memory")
+            self.config.set("services.chroma", self.chroma)
+            print("   ✓ ChromaDB initialized")
+            self.logger.info("ChromaDB initialized")
+
+        except Exception as e:
+            self.logger.error(f"Infrastructure init failed: {e}")
+            raise
     
     async def _discover_modules(self) -> Dict[str, Path]:
         """
-        Discover all modules by scanning module directories
+        Discover all available modules
         
-        Returns:
-            Dict mapping module names to their directory paths
+        Modules can be in:
+        - modules/core_modules/ (system critical)
+        - modules/capabilities/ (optional features)
+        - modules/integrations/ (external services)
+        - modules/personalities/ (personality modules)
         """
         modules = {}
+        base_path = Path(__file__).parent
+        
         module_dirs = [
-            Path("modules/core_modules"),
-            Path("modules/capability_modules"),
-            Path("modules/integration_modules")
+            base_path / "modules" / "core_modules",
+            base_path / "modules" / "capabilities",
+            base_path / "modules" / "integrations",
+            base_path / "modules" / "personalities"
         ]
         
         for module_dir in module_dirs:
@@ -207,19 +239,81 @@ class Nucleus:
         
         Uses topological sort to ensure dependencies are loaded first
         """
-        # Load all manifests
+        # Load all manifests with validation
         manifests = {}
         for name, path in modules.items():
             manifest_path = path / "manifest.yaml"
-            with open(manifest_path, 'r') as f:
-                manifest = yaml.safe_load(f)
-                manifests[name] = manifest
+            try:
+                with open(manifest_path, 'r') as f:
+                    manifest = yaml.safe_load(f)
+                    
+                    # CRITICAL FIX: Validate manifest structure
+                    if manifest is None:
+                        print(f"   ⚠️  WARNING: Empty manifest in {name} at {manifest_path}")
+                        manifest = {}  # Use empty dict as default
+                    elif isinstance(manifest, list):
+                        print(f"   ⚠️  WARNING: Invalid manifest format in {name} at {manifest_path}")
+                        print(f"      Manifest is a list but should be a dictionary (YAML mapping)")
+                        print(f"      Please fix the manifest.yaml file to use proper YAML structure")
+                        print(f"      Example structure:")
+                        print(f"      name: {name}")
+                        print(f"      version: 1.0.0")
+                        print(f"      dependencies:")
+                        print(f"        modules: []")
+                        # Try to salvage if possible
+                        manifest = {"name": name, "version": "0.0.0"}
+                    elif not isinstance(manifest, dict):
+                        print(f"   ⚠️  WARNING: Unexpected manifest type in {name}: {type(manifest)}")
+                        manifest = {"name": name, "version": "0.0.0"}
+                    
+                    # Ensure manifest has required fields
+                    if "name" not in manifest:
+                        manifest["name"] = name
+                    if "version" not in manifest:
+                        manifest["version"] = "0.0.0"
+                    if "dependencies" not in manifest:
+                        manifest["dependencies"] = {}
+                    
+                    manifests[name] = manifest
+                    
+            except yaml.YAMLError as e:
+                print(f"   ⚠️  WARNING: Failed to parse manifest for {name}: {e}")
+                print(f"      File: {manifest_path}")
+                print(f"      Using default manifest for this module")
+                manifests[name] = {
+                    "name": name,
+                    "version": "0.0.0",
+                    "dependencies": {}
+                }
+            except Exception as e:
+                print(f"   ⚠️  WARNING: Unexpected error loading manifest for {name}: {e}")
+                print(f"      File: {manifest_path}")
+                manifests[name] = {
+                    "name": name,
+                    "version": "0.0.0",
+                    "dependencies": {}
+                }
         
         # Build dependency graph
         graph = {name: set() for name in modules.keys()}
         for name, manifest in manifests.items():
-            deps = manifest.get("dependencies", {}).get("modules", [])
-            graph[name] = set(deps)
+            # Safe navigation with defaults
+            dependencies = manifest.get("dependencies", {})
+            if isinstance(dependencies, dict):
+                module_deps = dependencies.get("modules", [])
+                if isinstance(module_deps, list):
+                    # Only include dependencies that actually exist
+                    valid_deps = [dep for dep in module_deps if dep in modules]
+                    if len(module_deps) != len(valid_deps):
+                        missing = set(module_deps) - set(valid_deps)
+                        print(f"   ⚠️  WARNING: Module {name} has missing dependencies: {missing}")
+                    graph[name] = set(valid_deps)
+                else:
+                    print(f"   ⚠️  WARNING: Invalid dependencies.modules in {name} (expected list)")
+                    graph[name] = set()
+            else:
+                print(f"   ⚠️  WARNING: Invalid dependencies format in {name} (expected dict)")
+                graph[name] = set()
         
         # Topological sort (Kahn's algorithm)
         in_degree = {name: 0 for name in graph}
@@ -235,15 +329,18 @@ class Nucleus:
             node = queue.pop(0)
             result.append(node)
             
-            for name, deps in graph.items():
-                if node in deps:
-                    deps.remove(node)
-                    if len(deps) == 0:
-                        queue.append(name)
+            # Remove edges from this node
+            for dependent in list(graph.keys()):
+                if node in graph[dependent]:
+                    graph[dependent].remove(node)
+                    in_degree[dependent] -= 1
+                    if in_degree[dependent] == 0:
+                        queue.append(dependent)
         
         # Check for circular dependencies
-        if len(result) != len(graph):
-            raise ModuleLoadError("Circular dependency detected in modules")
+        if len(result) != len(modules):
+            unresolved = set(modules.keys()) - set(result)
+            raise ModuleLoadError(f"Circular dependency detected in modules: {unresolved}")
         
         return result
     
@@ -253,6 +350,9 @@ class Nucleus:
         manifest_path = module_path / "manifest.yaml"
         with open(manifest_path, 'r') as f:
             manifest = yaml.safe_load(f)
+            # Apply same validation as in _resolve_dependencies
+            if not isinstance(manifest, dict):
+                manifest = {"name": module_name, "version": "0.0.0"}
         
         # Create metadata
         metadata = ModuleMetadata(
@@ -268,147 +368,140 @@ class Nucleus:
         import importlib.util
         logic_path = module_path / "logic.py"
         spec = importlib.util.spec_from_file_location(f"modules.{module_name}", logic_path)
+        if spec is None or spec.loader is None:
+            raise ModuleLoadError(f"Failed to load module spec for {module_name}")
+        
         module = importlib.util.module_from_spec(spec)
+        sys.modules[f"modules.{module_name}"] = module
         spec.loader.exec_module(module)
         
-        # Find the module class (should inherit from BaseModule)
+        # Find the Module class
         module_class = None
-        for item in dir(module):
-            obj = getattr(module, item)
-            if (isinstance(obj, type) and 
-                issubclass(obj, BaseModule) and 
-                obj is not BaseModule):
-                module_class = obj
+        for item_name in dir(module):
+            item = getattr(module, item_name)
+            if isinstance(item, type) and issubclass(item, BaseModule) and item != BaseModule:
+                module_class = item
                 break
         
         if not module_class:
-            raise ModuleLoadError(f"No BaseModule subclass found in {module_name}")
+            raise ModuleLoadError(f"No Module class found in {module_name}")
         
-        # Instantiate module
-        instance = module_class(
-            name=module_name,
-            metadata=metadata,
-            message_bus=self.message_bus,
-            config=self.config,
-            logger=self.logger
-        )
+        # Instantiate and initialize
+        instance = module_class(metadata.name, metadata, self.message_bus, self.config, self.logger)
+        await instance._init()
         
-        # Initialize module
-        await instance.initialize()
-        
-        # Register module
+        # Store module
         self.modules[module_name] = instance
+        
+        # Subscribe to patterns
+        subscriptions = manifest.get("subscriptions", [])
+        for sub in subscriptions:
+            if isinstance(sub, dict) and "pattern" in sub and "handler" in sub:
+                pattern = sub["pattern"]
+                handler_name = sub["handler"]
+                if hasattr(instance, handler_name):
+                    handler = getattr(instance, handler_name)
+                    await self.message_bus.subscribe(pattern, handler)
+                    self.logger.debug(f"Module {module_name} subscribed to {pattern}")
     
     async def _start_event_loop(self) -> None:
-        """Start the main event loop and all module tasks"""
-        self.logger.info("Starting event loop tasks")
+        """Start the main event loop tasks"""
+        self.event_loop = asyncio.get_running_loop()
         
-        # Each module may have started its own tasks in initialize()
-        # The message bus handles all communication
-        # The Nucleus just needs to keep the loop running
-        
+        # Setup signal handlers
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            self.event_loop.add_signal_handler(
+                sig, lambda: asyncio.create_task(self.shutdown())
+            )
+    
     async def _health_monitor(self) -> None:
-        """Periodic health check of all modules"""
-        interval = self.config.get("nucleus.health_check_interval", 30)
-        
+        """Monitor system and module health"""
         while self.running:
             try:
-                await asyncio.sleep(interval)
-                
-                # Check module health
-                unhealthy = []
+                # Check each module
                 for name, module in self.modules.items():
-                    if not await module.health_check():
-                        unhealthy.append(name)
+                    if hasattr(module, 'health_check'):
+                        try:
+                            health = await module.health_check()
+                            # Handle both boolean and dict returns
+                            if isinstance(health, dict):
+                                if not health.get("healthy", True):
+                                    self.logger.warning(f"Module {name} unhealthy: {health}")
+                            elif isinstance(health, bool):
+                                if not health:
+                                    self.logger.warning(f"Module {name} unhealthy: returned False")
+                            else:
+                                self.logger.warning(f"Module {name} health check returned unexpected type: {type(health)}")
+                        except Exception as e:
+                            self.logger.error(f"Health check failed for {name}: {e}")
                 
                 self.last_health_check = datetime.now()
                 
-                if unhealthy:
-                    self.logger.warning(f"Unhealthy modules: {unhealthy}")
-                    await self.message_bus.publish("system.health.warning", {
-                        "unhealthy_modules": unhealthy,
-                        "timestamp": self.last_health_check.isoformat()
-                    })
-                else:
-                    self.logger.debug("Health check passed - all modules healthy")
-                    
+                # Sleep for health check interval
+                await asyncio.sleep(30)  # Check every 30 seconds
+                
             except Exception as e:
                 self.logger.error(f"Health monitor error: {e}")
-    
-    def _get_memory_usage(self) -> float:
-        """Get current memory usage in MB"""
-        import psutil
-        process = psutil.Process(os.getpid())
-        return process.memory_info().rss / 1024 / 1024
+                await asyncio.sleep(5)  # Retry after error
     
     async def shutdown(self) -> None:
-        """Graceful shutdown sequence"""
-        print("\n🌸 LOTUS shutting down...")
+        """Gracefully shutdown LOTUS"""
+        print("\n📴 Shutting down LOTUS...")
         self.logger.info("Shutdown initiated")
         
         self.running = False
         
-        # Cancel health monitor
+        # Cancel health monitoring
         if self.health_check_task:
             self.health_check_task.cancel()
-            try:
-                await self.health_check_task
-            except asyncio.CancelledError:
-                pass
         
-        # Shutdown all modules in reverse order
-        print("   Shutting down modules...")
+        # Shutdown modules in reverse order
         for module_name in reversed(self.load_order):
             if module_name in self.modules:
                 try:
                     await self.modules[module_name].shutdown()
-                    print(f"   ✓ Stopped: {module_name}")
+                    self.logger.info(f"Module {module_name} shutdown")
                 except Exception as e:
-                    print(f"   ✗ Error stopping {module_name}: {e}")
-                    self.logger.error(f"Error stopping module {module_name}: {e}")
+                    self.logger.error(f"Error shutting down {module_name}: {e}")
         
-        # Disconnect message bus
+        # Disconnect infrastructure
         if self.message_bus:
             await self.message_bus.disconnect()
-            print("   ✓ Message bus disconnected")
-        
-        print("🌸 LOTUS shutdown complete")
-        self.logger.info("Shutdown complete")
+
+        # Dispose database engine
+        if hasattr(self, "db_engine"):
+            await self.db_engine.dispose()
+
+        print("👋 LOTUS shutdown complete")
     
     async def run(self) -> None:
-        """
-        Main run loop
-        
-        Boots the system and keeps it running until interrupted
-        """
-        # Setup signal handlers
-        def signal_handler(sig, frame):
-            print(f"\nReceived signal {sig}")
-            asyncio.create_task(self.shutdown())
-        
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-        
-        # Boot the system
+        """Run the nucleus until shutdown"""
         await self.boot()
         
         # Keep running until shutdown
-        try:
-            while self.running:
-                await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            pass
-        finally:
-            if self.running:
-                await self.shutdown()
+        while self.running:
+            await asyncio.sleep(1)
+    
+    def health(self) -> dict:
+        """Get system health status"""
+        return {
+            "running": self.running,
+            "uptime": (datetime.now() - self.start_time).total_seconds() if self.start_time else 0,
+            "modules_loaded": len(self.modules),
+            "last_health_check": self.last_health_check.isoformat() if self.last_health_check else None
+        }
 
 
+# Entry point
 async def main():
-    """Entry point"""
     nucleus = Nucleus()
-    await nucleus.run()
+    try:
+        await nucleus.run()
+    except KeyboardInterrupt:
+        print("\n💔 Interrupted by user")
+    finally:
+        await nucleus.shutdown()
 
 
 if __name__ == "__main__":
-    # Run the system
     asyncio.run(main())

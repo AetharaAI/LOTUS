@@ -8,7 +8,7 @@ description: "ReAct reasoning engine - the brain of LOTUS that thinks, plans, an
 
 # Dependencies
 dependencies:
-  modules: ["memory", "providers"]
+  modules: []
   system: ["python>=3.11"]
   packages: []
 

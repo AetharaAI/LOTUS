@@ -142,6 +142,9 @@ class MemoryModule(BaseModule):
             
             self.stats["stored"] += 1
             
+        
+        
+
             # Publish confirmation
             await self.publish("memory.stored", {
                 "memory_id": memory_id,
@@ -177,14 +180,15 @@ class MemoryModule(BaseModule):
             max_results = event_data.get("max_results", 10)
             strategy_str = event_data.get("strategy", "comprehensive")
             
-            # Build retrieval config
+            # Build retrieval config (RetrievalConfig here doesn't accept a
+            # strategy parameter; the retrieval API expects the strategy as
+            # a separate argument when using the memory package's API.)
             config = RetrievalConfig(
-                strategy=RetrievalStrategy(strategy_str),
                 max_results=max_results
             )
-            
-            # Retrieve memories using intelligent retrieval
-            memories = await self.retrieval.retrieve(query, config)
+
+            # Retrieve memories using the requested strategy string
+            memories = await self.retrieval.retrieve(query, strategy=strategy_str, config=config)
             
             self.stats["retrieved"] += len(memories)
             

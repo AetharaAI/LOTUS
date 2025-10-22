@@ -114,7 +114,31 @@ class ReasoningEngine(BaseModule):
         user_message = event.data.get("text", "")
         context = event.data.get("context", {})
         
-        self.logger.info(f"User input received: {user_message[:100]}...")
+        # Debug: log input + runtime types for critical components
+        try:
+            mem_type = type(self.memory).__name__ if self.memory is not None else "None"
+        except Exception:
+            mem_type = "<error-getting-memory>"
+        try:
+            llm_type = type(self.llm).__name__ if self.llm is not None else "None"
+        except Exception:
+            llm_type = "<error-getting-llm>"
+
+        self.logger.info(f"User input received: {user_message[:100]}... | memory={mem_type} llm={llm_type}")
+
+        # If memory is unexpectedly missing or a NoOp with missing methods, capture a debug dump
+        try:
+            # Attempt a light probe to detect missing APIs
+            if self.memory is None:
+                self.logger.warning("[debug] memory service is None")
+            else:
+                # Probe for common methods
+                has_search = hasattr(self.memory, 'search')
+                has_recall = hasattr(self.memory, 'recall')
+                has_retrieve = hasattr(self.memory, 'retrieve')
+                self.logger.debug(f"[debug] memory methods: search={has_search} recall={has_recall} retrieve={has_retrieve}")
+        except Exception:
+            self.logger.exception("[debug] error probing memory service")
         
         # Start a new thinking session
         session_id = generate_id("session")

@@ -331,6 +331,13 @@ def get_system_status() -> dict:
 @click.argument("message", required=False)
 def chat(interactive, message):
     """Chat with LOTUS"""
+    # Warn if virtualenv does not appear to be active. This helps avoid
+    # the common issue where users open a new terminal and forget to
+    # `source venv/bin/activate` so dependencies are missing.
+    venv_active = os.environ.get('VIRTUAL_ENV') or os.environ.get('VENV')
+    if not venv_active:
+        print_styled("\n⚠️  It looks like the project's virtualenv is not active.", "yellow")
+        print_styled("   Run: source venv/bin/activate  or use ./run_lotus.sh <command>\n", "yellow")
     
     if interactive:
         # Start interactive session
@@ -371,10 +378,88 @@ def chat(interactive, message):
 
 
 def send_message_to_lotus(message: str) -> str:
-    """Send message to running LOTUS instance"""
-    # TODO: Implement via Redis pub/sub
-    # For now, return placeholder
-    return "I received your message! (Full chat implementation coming soon)"
+    """Send message to running LOTUS instance via Redis pub/sub.
+
+    This publishes the user's text to the `perception.user_input` channel and
+    subscribes to `action.respond` for the system reply. It waits up to
+    `timeout` seconds for a response, then returns the response content or
+    a timeout/error message.
+    """
+    import asyncio
+    from lib.message_bus import MessageBus
+
+    timeout = 15.0
+
+    async def _send_and_wait():
+        bus = MessageBus()
+        try:
+            await bus.connect()
+        except Exception as e:
+            return f"Error connecting to message bus: {e}"
+        # Use Redis Streams to poll for the latest response instead of relying
+        # on a short-lived pubsub subscription (which can race with pubsub
+        # connection setup in redis.asyncio). This is more robust for CLI
+        # clients that connect briefly to publish and await a response.
+
+        # Publish the user input
+        payload = {"text": message, "context": {"source": "cli"}}
+        try:
+            await bus.publish("perception.user_input", payload)
+        except Exception as e:
+            try:
+                await bus.disconnect()
+            except Exception:
+                pass
+            return f"Error publishing message: {e}"
+
+        # Poll the stream for a new action.respond entry
+        import time
+        from datetime import datetime
+
+        start_time = datetime.utcnow()
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            try:
+                latest = await bus.get_latest("action.respond")
+            except Exception as e:
+                # If history retrieval fails, break and return error
+                try:
+                    await bus.disconnect()
+                except Exception:
+                    pass
+                return f"Error reading response stream: {e}"
+
+            if latest:
+                try:
+                    # latest['timestamp'] is ISO format
+                    msg_time = datetime.fromisoformat(latest.get("timestamp"))
+                except Exception:
+                    msg_time = None
+
+                if msg_time is None or msg_time >= start_time:
+                    # Found a response that is new enough
+                    try:
+                        await bus.disconnect()
+                    except Exception:
+                        pass
+                    # latest['data'] contains the original payload published by modules
+                    data = latest.get("data") or {}
+                    return data.get("content") or data.get("text") or "(empty response)"
+
+            await asyncio.sleep(0.25)
+
+        try:
+            await bus.disconnect()
+        except Exception:
+            pass
+        return "(No response from LOTUS within timeout)"
+
+    # Run the async send/wait logic
+    try:
+        return asyncio.run(_send_and_wait())
+    except Exception as e:
+        return f"Error sending message: {e}"
 
 
 @cli.command()

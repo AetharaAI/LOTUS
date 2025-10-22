@@ -117,6 +117,39 @@ class ProviderModule(BaseModule):
         }
         
         self.logger.info(f"Provider system initialized with {len(self.providers)} providers")
+
+    # Adapter so other modules can call `self.llm.complete(...)`
+    async def complete(self, prompt: str, model: str = None, provider: str = None, max_tokens: int = 2000, temperature: float = 0.7, **kwargs):
+        """Compatibility adapter: forwards a direct complete() call to a provider.
+
+        This lets modules call `self.llm.complete(...)` instead of publishing
+        an event. It uses the same routing logic as the llm.complete event
+        handler.
+        """
+        # Build a lightweight CompletionRequest
+        req = CompletionRequest(
+            prompt=prompt,
+            system_prompt=kwargs.get("system_prompt"),
+            provider=provider,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stream=kwargs.get("stream", False),
+            tools=kwargs.get("tools"),
+            metadata=kwargs.get("metadata", {})
+        )
+
+        # Route and call provider synchronously
+        provider_name, prov = self._route_request(req)
+        # Use provider.complete which returns an LLMResponse
+        response = await prov.complete(
+            prompt=req.prompt,
+            model=req.model,
+            max_tokens=req.max_tokens,
+            temperature=req.temperature
+        )
+
+        return response
     
     @on_event("llm.complete")
     async def handle_completion(self, event: Dict[str, Any]) -> None:

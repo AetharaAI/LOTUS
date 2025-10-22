@@ -180,15 +180,35 @@ class Nucleus:
             self.logger.info("PostgreSQL connected")
 
             # Initialize ChromaDB
-            import chromadb
-            from chromadb.config import Settings
-            chroma_path = os.environ.get("CHROMA_PATH", "./var/chroma")
-            self.chroma = chromadb.PersistentClient(path=chroma_path, settings=Settings(anonymized_telemetry=False))
-            # Optional: create default collection
-            self.chroma.get_or_create_collection("lotus_memory")
-            self.config.set("services.chroma", self.chroma)
-            print("   ✓ ChromaDB initialized")
-            self.logger.info("ChromaDB initialized")
+            # Allow disabling Chroma via config for lightweight/local runs
+            chroma_enabled = False
+            try:
+                chroma_enabled = bool(self.config.get("chroma.enabled", False))
+            except Exception:
+                chroma_enabled = False
+
+            if chroma_enabled:
+                try:
+                    import chromadb
+                    from chromadb.config import Settings
+                    chroma_path = os.environ.get("CHROMA_PATH", "./var/chroma")
+                    self.chroma = chromadb.PersistentClient(path=chroma_path, settings=Settings(anonymized_telemetry=False))
+                    # Optional: create default collection
+                    try:
+                        self.chroma.get_or_create_collection("lotus_memory")
+                    except Exception:
+                        # Some backends may not support collection introspection in the same way
+                        pass
+                    self.config.set("services.chroma", self.chroma)
+                    print("   ✓ ChromaDB initialized")
+                    self.logger.info("ChromaDB initialized")
+                except Exception as e:
+                    # Log chroma initialization failure but allow boot to continue
+                    print(f"   ⚠️  ChromaDB init skipped/failed: {e}")
+                    self.logger.warning(f"ChromaDB initialization failed or skipped: {e}")
+            else:
+                print("   ⤷ ChromaDB disabled by config; skipping initialization")
+                self.logger.info("ChromaDB initialization skipped (config) ")
 
         except Exception as e:
             self.logger.error(f"Infrastructure init failed: {e}")
@@ -392,6 +412,19 @@ class Nucleus:
         
         # Store module
         self.modules[module_name] = instance
+        # Expose key service modules in the config for easy access by other modules
+        try:
+            if module_name == "memory":
+                # The memory module should be available as a service for other modules
+                self.config.set("services.memory", instance)
+                self.logger.info("Registered memory service in config")
+            if module_name == "providers" or module_name == "provider" or module_name == "llm":
+                # The providers module acts as the LLM service facade
+                self.config.set("services.llm", instance)
+                self.logger.info("Registered llm/providers service in config")
+        except Exception:
+            # Don't let service wiring break module loading
+            self.logger.debug("Failed to register service in config for %s", module_name)
         
         # Subscribe to patterns
         subscriptions = manifest.get("subscriptions", [])
@@ -401,8 +434,31 @@ class Nucleus:
                 handler_name = sub["handler"]
                 if hasattr(instance, handler_name):
                     handler = getattr(instance, handler_name)
-                    await self.message_bus.subscribe(pattern, handler)
-                    self.logger.debug(f"Module {module_name} subscribed to {pattern}")
+                    # Avoid subscribing the same handler twice. Modules may register
+                    # handlers via the @on_event decorator (registered in
+                    # BaseModule._register_decorators) and also declare the same
+                    # handler in their manifest. If the decorator already
+                    # registered the handler for this pattern, skip the extra
+                    # subscription to prevent the message bus from calling the
+                    # handler directly with (channel, payload) which would add
+                    # an extra unexpected argument.
+                    already_registered = False
+                    if pattern in getattr(instance, "_event_handlers", {}):
+                        for h in instance._event_handlers.get(pattern, []):
+                            # h may be a bound method or function; get a canonical name
+                            h_name = getattr(h, "__name__", None)
+                            if h_name is None:
+                                # bound method: try to get underlying function name
+                                h_name = getattr(getattr(h, "__func__", None), "__name__", None)
+                            if h_name == handler_name:
+                                already_registered = True
+                                break
+
+                    if not already_registered:
+                        await self.message_bus.subscribe(pattern, handler)
+                        self.logger.debug(f"Module {module_name} subscribed to {pattern}")
+                    else:
+                        self.logger.debug(f"Module {module_name} skipped duplicate subscription for {pattern} -> {handler_name}")
     
     async def _start_event_loop(self) -> None:
         """Start the main event loop tasks"""

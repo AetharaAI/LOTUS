@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 LOTUS/ASH Nucleus - Core Runtime Engine (FIXED VERSION)
 
@@ -30,6 +29,9 @@ from lib.logging import setup_logging, get_logger
 from lib.module import BaseModule, ModuleMetadata
 from lib.exceptions import ModuleLoadError, SystemError
 
+# Import ToolManager (now it lives within reasoning module)
+from modules.core_modules.reasoning.tool_manager import ToolCategory
+
 
 class Nucleus:
     """
@@ -41,6 +43,7 @@ class Nucleus:
     - Event loop orchestration
     - Health monitoring
     - Message routing coordination
+    - Dynamic tool aggregation and registration
     """
     
     def __init__(self, config_path: str = "config/system.yaml"):
@@ -115,9 +118,37 @@ class Nucleus:
                     self.logger.info(f"Module loaded: {module_name}")
                 except Exception as e:
                     print(f"   ✗ Failed: {module_name} - {e}")
-                    self.logger.error(f"Failed to load module {module_name}: {e}")
+                    self.logger.error(f"Failed to load module {module_name}: {e}", exc_info=True)
                     # Don't stop on module load failure
             
+            # After all modules are loaded and initialized, register tools with ReasoningEngine's ToolManager
+            reasoning_module = self.modules.get("reasoning")
+            if reasoning_module and hasattr(reasoning_module, 'tool_manager') and reasoning_module.tool_manager:
+                self.logger.info("Registering all discovered module tools with ReasoningEngine's ToolManager.")
+                for module_instance in self.modules.values():
+                    if module_instance.name != "reasoning": # Don't register ToolManager's own built-ins again
+                        for tool_def in module_instance.get_registered_tools(): # get_registered_tools is a new BaseModule method
+                            try:
+                                # ToolCategory parsing might need to be dynamic or a default
+                                tool_category_str = tool_def.get("category", "system") # Assume system if not defined by decorator
+                                tool_category = ToolCategory(tool_category_str) # Convert to Enum
+                                reasoning_module.tool_manager.register(
+                                    name=tool_def["name"],
+                                    description=tool_def["description"],
+                                    category=tool_category, # Pass the ToolCategory Enum
+                                    function=tool_def["function_ref"], # Pass the bound function reference
+                                    parameters=tool_def.get("parameters", {}), # Add parameters if defined in decorator
+                                    requires_confirmation=tool_def.get("requires_confirmation", False),
+                                    is_dangerous=tool_def.get("is_dangerous", False),
+                                    source_module=module_instance.name
+                                )
+                                self.logger.debug(f"Registered tool '{tool_def['name']}' from module '{module_instance.name}'.")
+                            except Exception as e:
+                                self.logger.error(f"Failed to register tool '{tool_def.get('name', 'unknown')}' from module '{module_instance.name}': {e}", exc_info=True)
+                self.logger.info(f"Finished registering module tools with ReasoningEngine's ToolManager. Total tools: {len(reasoning_module.tool_manager.tools)}.")
+            else:
+                self.logger.warning("Reasoning module or its ToolManager not found/initialized. Dynamic tool registration skipped.")
+
             # 7. Start event loop tasks
             await self._start_event_loop()
             
@@ -144,7 +175,7 @@ class Nucleus:
             
         except Exception as e:
             print(f"❌ Boot failed: {e}")
-            self.logger.error(f"Boot failed: {e}")
+            self.logger.error(f"Boot failed: {e}", exc_info=True)
             self.logger.debug(traceback.format_exc())
             raise SystemError(f"Failed to boot LOTUS: {e}")
     
@@ -159,8 +190,7 @@ class Nucleus:
             self.message_bus = MessageBus(self.config)
             await self.message_bus.connect()
             # CRUCIAL: Allow the message_bus's internal _message_handler task to start listening.
-            # A short sleep here can give the background task a chance to fully establish its listener.
-            await asyncio.sleep(0.1) 
+            await asyncio.sleep(0.1) # Give the background task a chance to fully establish its listener.
             print("   ✓ Redis connected")
             self.logger.info("Redis message bus connected")
 
@@ -183,11 +213,11 @@ class Nucleus:
             self.logger.info("PostgreSQL connected")
 
             # Initialize ChromaDB
-            # Allow disabling Chroma via config for lightweight/local runs
-            chroma_enabled = True
+            chroma_enabled = False
             try:
-                chroma_enabled = bool(self.config.get("chroma.enabled", True))
+                chroma_enabled = bool(self.config.get("chroma.enabled", False))
             except Exception:
+                self.logger.warning("Failed to read 'chroma.enabled' from config, assuming disabled.", exc_info=True)
                 chroma_enabled = False
 
             if chroma_enabled:
@@ -196,9 +226,7 @@ class Nucleus:
                     from chromadb.config import Settings
                     chroma_path = os.environ.get("CHROMA_PATH", "./var/chroma")
                     self.chroma = chromadb.PersistentClient(path=chroma_path, settings=Settings(anonymized_telemetry=False))
-                    # Optional: create default collection
                     try:
-                        # Attempt to get collection, this also performs a health check
                         self.chroma.get_or_create_collection("lotus_memory")
                         self.logger.info("ChromaDB default collection checked/created.")
                     except Exception as e:
@@ -208,19 +236,14 @@ class Nucleus:
                     print("   ✓ ChromaDB initialized")
                     self.logger.info("ChromaDB initialized")
                 except Exception as e:
-                    # Log chroma initialization failure but allow boot to continue
                     print(f"   ⚠️  ChromaDB init skipped/failed: {e}")
                     self.logger.warning(f"ChromaDB initialization failed or skipped: {e}", exc_info=True)
-                    # Set chroma_client to None so MemoryModule can create NoOp
                     self.chroma = None 
             else:
                 print("   ⤷ ChromaDB disabled by config; skipping initialization")
                 self.logger.info("ChromaDB initialization skipped (config) ")
-                # Set chroma_client to None so MemoryModule can create NoOp
                 self.chroma = None
 
-            # IMPORTANT: Re-set chroma_client in config to None if it failed or was skipped,
-            # so dependent modules like MemoryModule can correctly instantiate NoOp.
             self.config.set("services.chroma", self.chroma)
 
         except Exception as e:
@@ -228,15 +251,7 @@ class Nucleus:
             raise
     
     async def _discover_modules(self) -> Dict[str, Path]:
-        """
-        Discover all available modules
-        
-        Modules can be in:
-        - modules/core_modules/ (system critical)
-        - modules/capabilities/ (optional features)
-        - modules/integrations/ (external services)
-        - modules/personalities/ (personality modules)
-        """
+        """Discover all available modules"""
         modules = {}
         base_path = Path(__file__).parent
         
@@ -244,7 +259,9 @@ class Nucleus:
             base_path / "modules" / "core_modules",
             base_path / "modules" / "capabilities",
             base_path / "modules" / "integrations",
-            base_path / "modules" / "personalities"
+            base_path / "modules" / "personalities",
+            base_path / "modules" / "capability_modules", # Ensure this path is also scanned
+            base_path / "modules" / "integration_modules", # Ensure this path is also scanned
         ]
         
         for module_dir in module_dirs:
@@ -255,7 +272,6 @@ class Nucleus:
                 if not module_path.is_dir():
                     continue
                 
-                # Check for required files
                 manifest_path = module_path / "manifest.yaml"
                 logic_path = module_path / "logic.py"
                 
@@ -267,12 +283,7 @@ class Nucleus:
         return modules
     
     async def _resolve_dependencies(self, modules: Dict[str, Path]) -> List[str]:
-        """
-        Resolve module dependencies and determine load order
-        
-        Uses topological sort to ensure dependencies are loaded first
-        """
-        # Load all manifests with validation
+        """Resolve module dependencies and determine load order"""
         manifests = {}
         for name, path in modules.items():
             manifest_path = path / "manifest.yaml"
@@ -280,32 +291,20 @@ class Nucleus:
                 with open(manifest_path, 'r') as f:
                     manifest = yaml.safe_load(f)
                     
-                    # CRITICAL FIX: Validate manifest structure
                     if manifest is None:
                         print(f"   ⚠️  WARNING: Empty manifest in {name} at {manifest_path}")
-                        manifest = {}  # Use empty dict as default
+                        manifest = {}
                     elif isinstance(manifest, list):
                         print(f"   ⚠️  WARNING: Invalid manifest format in {name} at {manifest_path}")
                         print(f"      Manifest is a list but should be a dictionary (YAML mapping)")
-                        print(f"      Please fix the manifest.yaml file to use proper YAML structure")
-                        print(f"      Example structure:")
-                        print(f"      name: {name}")
-                        print(f"      version: 1.0.0")
-                        print(f"      dependencies:")
-                        print(f"        modules: []")
-                        # Try to salvage if possible
                         manifest = {"name": name, "version": "0.0.0"}
                     elif not isinstance(manifest, dict):
                         print(f"   ⚠️  WARNING: Unexpected manifest type in {name}: {type(manifest)}")
                         manifest = {"name": name, "version": "0.0.0"}
                     
-                    # Ensure manifest has required fields
-                    if "name" not in manifest:
-                        manifest["name"] = name
-                    if "version" not in manifest:
-                        manifest["version"] = "0.0.0"
-                    if "dependencies" not in manifest:
-                        manifest["dependencies"] = {}
+                    if "name" not in manifest: manifest["name"] = name
+                    if "version" not in manifest: manifest["version"] = "0.0.0"
+                    if "dependencies" not in manifest: manifest["dependencies"] = {}
                     
                     manifests[name] = manifest
                     
@@ -313,29 +312,18 @@ class Nucleus:
                 print(f"   ⚠️  WARNING: Failed to parse manifest for {name}: {e}")
                 print(f"      File: {manifest_path}")
                 print(f"      Using default manifest for this module")
-                manifests[name] = {
-                    "name": name,
-                    "version": "0.0.0",
-                    "dependencies": {}
-                }
+                manifests[name] = { "name": name, "version": "0.0.0", "dependencies": {} }
             except Exception as e:
                 print(f"   ⚠️  WARNING: Unexpected error loading manifest for {name}: {e}")
                 print(f"      File: {manifest_path}")
-                manifests[name] = {
-                    "name": name,
-                    "version": "0.0.0",
-                    "dependencies": {}
-                }
+                manifests[name] = { "name": name, "version": "0.0.0", "dependencies": {} }
         
-        # Build dependency graph
         graph = {name: set() for name in modules.keys()}
         for name, manifest in manifests.items():
-            # Safe navigation with defaults
             dependencies = manifest.get("dependencies", {})
             if isinstance(dependencies, dict):
                 module_deps = dependencies.get("modules", [])
                 if isinstance(module_deps, list):
-                    # Only include dependencies that actually exist
                     valid_deps = [dep for dep in module_deps if dep in modules]
                     if len(module_deps) != len(valid_deps):
                         missing = set(module_deps) - set(valid_deps)
@@ -348,7 +336,6 @@ class Nucleus:
                 print(f"   ⚠️  WARNING: Invalid dependencies format in {name} (expected dict)")
                 graph[name] = set()
         
-        # Topological sort (Kahn's algorithm)
         in_degree = {name: 0 for name in graph}
         for deps in graph.values():
             for dep in deps:
@@ -362,7 +349,6 @@ class Nucleus:
             node = queue.pop(0)
             result.append(node)
             
-            # Remove edges from this node
             for dependent in list(graph.keys()):
                 if node in graph[dependent]:
                     graph[dependent].remove(node)
@@ -370,7 +356,6 @@ class Nucleus:
                     if in_degree[dependent] == 0:
                         queue.append(dependent)
         
-        # Check for circular dependencies
         if len(result) != len(modules):
             unresolved = set(modules.keys()) - set(result)
             raise ModuleLoadError(f"Circular dependency detected in modules: {unresolved}")
@@ -379,15 +364,12 @@ class Nucleus:
     
     async def _load_module(self, module_name: str, module_path: Path) -> None:
         """Load and initialize a single module"""
-        # Load manifest
         manifest_path = module_path / "manifest.yaml"
         with open(manifest_path, 'r') as f:
             manifest = yaml.safe_load(f)
-            # Apply same validation as in _resolve_dependencies
             if not isinstance(manifest, dict):
                 manifest = {"name": module_name, "version": "0.0.0"}
         
-        # Create metadata
         metadata = ModuleMetadata(
             name=module_name,
             version=manifest.get("version", "0.0.0"),
@@ -397,7 +379,6 @@ class Nucleus:
         )
         self.module_metadata[module_name] = metadata
         
-        # Dynamically import module
         import importlib.util
         logic_path = module_path / "logic.py"
         spec = importlib.util.spec_from_file_location(f"modules.{module_name}", logic_path)
@@ -408,7 +389,6 @@ class Nucleus:
         sys.modules[f"modules.{module_name}"] = module
         spec.loader.exec_module(module)
         
-        # Find the Module class
         module_class = None
         for item_name in dir(module):
             item = getattr(module, item_name)
@@ -419,27 +399,26 @@ class Nucleus:
         if not module_class:
             raise ModuleLoadError(f"No Module class found in {module_name}")
         
-        # Instantiate and initialize
         instance = module_class(metadata.name, metadata, self.message_bus, self.config, self.logger)
-        await instance._init()
-        
-        # Store module
+        await instance._init() # Call internal _init to handle decorator registration
+
         self.modules[module_name] = instance
-        # Expose key service modules in the config for easy access by other modules
         try:
             if module_name == "memory":
-                # The memory module should be available as a service for other modules
                 self.config.set("services.memory", instance)
                 self.logger.info("Registered memory service in config")
             if module_name == "providers" or module_name == "provider" or module_name == "llm":
-                # The providers module acts as the LLM service facade
                 self.config.set("services.llm", instance)
                 self.logger.info("Registered llm/providers service in config")
+            if module_name == "context_orchestrator": # Register the new orchestrator
+                self.config.set("services.context_orchestrator", instance)
+                self.logger.info("Registered context_orchestrator service in config")
+
         except Exception:
-            # Don't let service wiring break module loading
             self.logger.debug("Failed to register service in config for %s", module_name)
         
-        # Subscribe to patterns
+        # Subscribe to patterns. BaseModule._init already handles decorators.
+        # But for manifest-defined subscriptions not tied to @on_event, handle them here.
         subscriptions = manifest.get("subscriptions", [])
         for sub in subscriptions:
             if isinstance(sub, dict) and "pattern" in sub and "handler" in sub:
@@ -447,25 +426,11 @@ class Nucleus:
                 handler_name = sub["handler"]
                 if hasattr(instance, handler_name):
                     handler = getattr(instance, handler_name)
-                    # Avoid subscribing the same handler twice. Modules may register
-                    # handlers via the @on_event decorator (registered in
-                    # BaseModule._register_decorators) and also declare the same
-                    # handler in their manifest. If the decorator already
-                    # registered the handler for this pattern, skip the extra
-                    # subscription to prevent the message bus from calling the
-                    # handler directly with (channel, payload) which would add
-                    # an extra unexpected argument.
+                    # Check if already registered via @on_event
                     already_registered = False
-                    if pattern in getattr(instance, "_event_handlers", {}):
-                        for h in instance._event_handlers.get(pattern, []):
-                            # h may be a bound method or function; get a canonical name
-                            h_name = getattr(h, "__name__", None)
-                            if h_name is None:
-                                # bound method: try to get underlying function name
-                                h_name = getattr(getattr(h, "__func__", None), "__name__", None)
-                            if h_name == handler_name:
-                                already_registered = True
-                                break
+                    if pattern in instance._event_handlers: # Check the instance's own registry
+                        if handler in instance._event_handlers[pattern]:
+                            already_registered = True
 
                     if not already_registered:
                         await self.message_bus.subscribe(pattern, handler)
@@ -477,7 +442,6 @@ class Nucleus:
         """Start the main event loop tasks"""
         self.event_loop = asyncio.get_running_loop()
         
-        # Setup signal handlers
         for sig in (signal.SIGTERM, signal.SIGINT):
             self.event_loop.add_signal_handler(
                 sig, lambda: asyncio.create_task(self.shutdown())
@@ -487,12 +451,10 @@ class Nucleus:
         """Monitor system and module health"""
         while self.running:
             try:
-                # Check each module
                 for name, module in self.modules.items():
                     if hasattr(module, 'health_check'):
                         try:
                             health = await module.health_check()
-                            # Handle both boolean and dict returns
                             if isinstance(health, dict):
                                 if not health.get("healthy", True):
                                     self.logger.warning(f"Module {name} unhealthy: {health}")
@@ -506,15 +468,14 @@ class Nucleus:
                 
                 self.last_health_check = datetime.now()
                 
-                # Sleep for health check interval
-                await asyncio.sleep(30)  # Check every 30 seconds
+                await asyncio.sleep(30)
                 
             except asyncio.CancelledError:
                 self.logger.info("Health monitor task cancelled.")
                 break
             except Exception as e:
                 self.logger.error(f"Health monitor error: {e}", exc_info=True)
-                await asyncio.sleep(5)  # Retry after error
+                await asyncio.sleep(5)
     
     async def shutdown(self) -> None:
         """Gracefully shutdown LOTUS"""
@@ -523,7 +484,6 @@ class Nucleus:
         
         self.running = False
         
-        # Cancel health monitoring
         if self.health_check_task:
             self.health_check_task.cancel()
             try:
@@ -531,7 +491,6 @@ class Nucleus:
             except asyncio.CancelledError:
                 pass
         
-        # Shutdown modules in reverse order
         for module_name in reversed(self.load_order):
             if module_name in self.modules:
                 try:
@@ -540,11 +499,9 @@ class Nucleus:
                 except Exception as e:
                     self.logger.error(f"Error shutting down {module_name}: {e}", exc_info=True)
         
-        # Disconnect infrastructure
         if self.message_bus:
             await self.message_bus.disconnect()
 
-        # Dispose database engine
         if hasattr(self, "db_engine"):
             self.logger.debug("Disposing PostgreSQL engine.")
             try:
@@ -560,7 +517,6 @@ class Nucleus:
         """Run the nucleus until shutdown"""
         await self.boot()
         
-        # Keep running until shutdown
         while self.running:
             await asyncio.sleep(1)
     
@@ -574,7 +530,6 @@ class Nucleus:
         }
 
 
-# Entry point
 async def main():
     nucleus = Nucleus()
     try:

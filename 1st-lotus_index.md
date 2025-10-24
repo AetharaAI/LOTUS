@@ -1,10 +1,10 @@
 # LOTUS Project Index - Full Context Report (Updated Oct 14, 2025)
 
 **Scan Path:** `/home/cory/Desktop/Lotus/lotus`  
-**Generated:** Thu Oct 23 12:02:20 AM EDT 2025  
+**Generated:** Tue Oct 14 07:23:53 PM EDT 2025  
 **Total Expected Files:** ~193 (per Project_Structure.md)  
-**Files Scanned:** 262  
-**Implemented/Coded:** 107 (40.8%)  
+**Files Scanned:** 184  
+**Implemented/Coded:** 40 (21.7%)  
 **Notes:** Based on complete tree from Project_Structure.md. Extras (e.g., consciousness module) ignored. Use for LLM context—paste into Claude.ai knowledge.
 
 ## 📂 Actual Directory Tree (Current State)
@@ -12,65 +12,34 @@
 ```ascii
 ├── .lotus/
 ├── README.md
-├── __pycache__/
-│   └── nucleus.cpython-310.pyc
 ├── cli.py
 ├── config/
 │   ├── memory.yaml
 │   ├── modules/
-│   │   ├── README.md
 │   │   ├── code_assistant.yaml
 │   │   ├── consciousness.yaml
 │   │   ├── memory.yaml
-│   │   ├── perception.yaml
 │   │   ├── providers.yaml
 │   │   └── reasoning.yaml
-│   ├── persona.yaml
 │   ├── providers.yaml
 │   ├── security.yaml
 │   └── system.yaml
 ├── data/
-│   ├── cache/
 │   ├── knowledge/
-│   │   ├── backups/
-│   │   └── postgres/
 │   ├── logs/
-│   │   ├── errors_20251016.log
-│   │   ├── errors_20251017.log
-│   │   ├── errors_20251019.log
-│   │   ├── errors_20251021.log
-│   │   ├── errors_20251022.log
-│   │   ├── lotus_20251016.log
-│   │   ├── lotus_20251017.log
-│   │   ├── lotus_20251019.log
-│   │   ├── lotus_20251021.log
-│   │   ├── lotus_20251022.log
 │   │   └── nucleus.log
 │   ├── memory/
-│   │   ├── chromadb/
-│   │   ├── embeddings/
-│   │   └── snapshots/
 │   └── state/
 │       ├── module_state.json
 │       └── pid.lock
-├── diagnose_manifests.py
 ├── docker-compose.yml
 ├── docs/
 │   ├── API_REFERENCE.md
 │   ├── ARCHITECTURE.md
-│   ├── Basic-Explainer-Python-Async-Pub/
-│   │   └── Sub-Manifests.md
 │   ├── CONFIGURATION.md
 │   ├── DEPLOYMENT.md
-│   ├── FINAL_README.md
 │   ├── GETTING_STARTED.md
 │   ├── INDEX_Session_2.md
-│   ├── LOTUS_Complete_Implementation_Guide.md
-│   ├── LOTUS_FULLSTEP_EXECUTION_GUIDE.md
-│   ├── LOTUS_IMPLEMENTATION_CHECKLIST.md
-│   ├── MASTER_INDEX.md
-│   ├── MEM_INTEGRATION_GUIDE.md
-│   ├── MEM_SYS_MANIFEST.txt
 │   ├── MODULE_DEVELOPMENT.md
 │   ├── README_SESSION_1_STATUS.md
 │   ├── SESSION_2_SUMMARY_(CLEAN).md
@@ -79,48 +48,21 @@
 │       ├── advanced_module.py
 │       ├── basic_module.py
 │       └── custom_provider.py
-├── fix_manifests.py
-├── flow.dot
 ├── lib/
 │   ├── __init__.py
-│   ├── __pycache__/
-│   │   ├── __init__.cpython-310.pyc
-│   │   ├── config.cpython-310.pyc
-│   │   ├── decorators.cpython-310.pyc
-│   │   ├── exceptions.cpython-310.pyc
-│   │   ├── logging.cpython-310.pyc
-│   │   ├── message_bus.cpython-310.pyc
-│   │   ├── module.cpython-310.pyc
-│   │   ├── providers.cpython-310.pyc
-│   │   └── utils.cpython-310.pyc
 │   ├── config.py
 │   ├── decorators.py
 │   ├── exceptions.py
 │   ├── logging.py
-│   ├── memory/
-│   │   ├── __init__.py
-│   │   ├── __pycache__/
-│   │   │   └── __init__.cpython-310.pyc
-│   │   ├── base.py
-│   │   ├── long_term.py
-│   │   ├── persistent.py
-│   │   ├── retrieval.py
-│   │   ├── short_term.py
-│   │   └── working_memory.py
+│   ├── memory.py
 │   ├── message_bus.py
 │   ├── module.py
-│   ├── original_memory.py
 │   ├── providers.py
 │   ├── security.py
 │   ├── utils.py
-│   ├── utils.py.backup
 │   └── validators.py
-├── lotus_flow_mapper.py
-├── lotus_import_paths_reference.md
 ├── modules/
 │   ├── __init__.py
-│   ├── __pycache__/
-│   │   └── __init__.cpython-310.pyc
 │   ├── capability_modules/
 │   │   ├── __init__.py
 │   │   ├── code_assistant/
@@ -177,64 +119,44 @@
 │   │       └── wake_word.py
 │   ├── core_modules/
 │   │   ├── __init__.py
-│   │   ├── __pycache__/
-│   │   │   └── __init__.cpython-310.pyc
 │   │   ├── memory/
 │   │   │   ├── __init__.py
-│   │   │   ├── __pycache__/
-│   │   │   │   ├── __init__.cpython-310.pyc
-│   │   │   │   └── logic.cpython-310.pyc
 │   │   │   ├── consolidation.py
 │   │   │   ├── logic.py
 │   │   │   ├── long_term.py
 │   │   │   ├── manifest.yaml
-│   │   │   ├── manifest.yaml.backup
 │   │   │   ├── module.json
-│   │   │   ├── original_consolidation.py
-│   │   │   ├── original_logic.py
 │   │   │   ├── persistent.py
 │   │   │   ├── retrieval.py
 │   │   │   ├── short_term.py
 │   │   │   └── working_memory.py
 │   │   ├── perception/
 │   │   │   ├── __init__.py
-│   │   │   ├── __pycache__/
-│   │   │   │   └── logic.cpython-310.pyc
 │   │   │   ├── clipboard_monitor.py
 │   │   │   ├── file_watcher.py
 │   │   │   ├── input_processor.py
 │   │   │   ├── logic.py
 │   │   │   ├── manifest.yaml
-│   │   │   ├── manifest.yaml.backup
 │   │   │   └── module.json
 │   │   ├── providers/
 │   │   │   ├── __init__.py
-│   │   │   ├── __pycache__/
-│   │   │   │   └── logic.cpython-310.pyc
 │   │   │   ├── anthropic.py
 │   │   │   ├── base_provider.py
 │   │   │   ├── google.py
 │   │   │   ├── litellm.py
 │   │   │   ├── logic.py
 │   │   │   ├── manifest.yaml
-│   │   │   ├── manifest.yaml.backup
 │   │   │   ├── module.json
 │   │   │   ├── ollama.py
 │   │   │   ├── openai.py
-│   │   │   ├── openrouter.py
-│   │   │   └── xai.py
+│   │   │   └── openrouter.py
 │   │   └── reasoning/
 │   │       ├── README.md
 │   │       ├── __init__.py
-│   │       ├── __pycache__/
-│   │       │   └── logic.cpython-310.pyc
 │   │       ├── context_builder.py
-│   │       ├── last_logic.py
 │   │       ├── logic.py
-│   │       ├── logic.py.backup
 │   │       ├── manifest.yaml
 │   │       ├── module.json
-│   │       ├── prompt_builder.py
 │   │       ├── react_engine.py
 │   │       └── tool_manager.py
 │   ├── hello_world_module/
@@ -277,10 +199,6 @@
 │           ├── server.py
 │           └── tools.py
 ├── nucleus.py
-├── orginal_requirements.txt
-├── original_cli.py
-├── original_nucleus.py
-├── redis-cli-inspect-logs.md
 ├── registry/
 │   ├── community/
 │   │   └── catalog.json
@@ -299,87 +217,49 @@
 │   ├── install_module.py
 │   ├── migrate.py
 │   ├── restore.py
-│   ├── setup.sh
-│   └── validate_lotus.py
+│   └── setup.sh
 ├── setup.py
-├── test_publish.py
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── integration/
-│   │   ├── test_events.py
-│   │   ├── test_full_workflow.py
-│   │   ├── test_module_loading.py
-│   │   └── test_multi_module.py
-│   └── unit/
-│       ├── test_memory.py
-│       ├── test_message_bus.py
-│       ├── test_module_system.py
-│       └── test_nucleus.py
-└── var/
-    └── chroma/
-        └── chroma.sqlite3
+└── tests/
+    ├── __init__.py
+    ├── conftest.py
+    ├── integration/
+    │   ├── test_full_workflow.py
+    │   ├── test_module_loading.py
+    │   └── test_multi_module.py
+    └── unit/
+        ├── test_memory.py
+        ├── test_message_bus.py
+        ├── test_module_system.py
+        └── test_nucleus.py
 ```
 
 ## 📋 File Status Inventory (Actual vs Expected)
 
 | Relative Path | Status | Notes |
 |---------------|--------|-------|
-| `.env` | ⚠️ Stub/Partial |  |
-| `.env.example` | ⚠️ Stub/Partial |  |
-| `.gitignore` | ⚠️ Stub/Partial |  |
+| `.env.example` | ⚠️ Empty |  |
+| `.gitignore` | ⚠️ Empty |  |
 | `README.md` | ✅ Complete |  |
-| `__pycache__/nucleus.cpython-310.pyc` | ⚠️ Stub/Partial |  |
 | `cli.py` | ✅ Coded |  |
 | `config/memory.yaml` | ✅ Complete |  |
-| `config/modules/README.md` | ✅ Complete |  |
-| `config/modules/code_assistant.yaml` | ✅ Complete |  |
+| `config/modules/code_assistant.yaml` | ⚠️ Empty |  |
 | `config/modules/consciousness.yaml` | ✅ Complete |  |
-| `config/modules/memory.yaml` | ✅ Complete |  |
-| `config/modules/perception.yaml` | ✅ Complete |  |
-| `config/modules/providers.yaml` | ✅ Complete |  |
-| `config/modules/reasoning.yaml` | ✅ Complete |  |
-| `config/persona.yaml` | ✅ Complete |  |
+| `config/modules/memory.yaml` | ⚠️ Empty |  |
+| `config/modules/providers.yaml` | ⚠️ Empty |  |
+| `config/modules/reasoning.yaml` | ⚠️ Empty |  |
 | `config/providers.yaml` | ✅ Complete |  |
 | `config/security.yaml` | ⚠️ Empty |  |
 | `config/system.yaml` | ✅ Complete |  |
-| `data/cache/.gitkeep` | ⚠️ Empty |  |
-| `data/knowledge/backups/.gitkeep` | ⚠️ Empty |  |
-| `data/knowledge/postgres/.gitkeep` | ⚠️ Empty |  |
-| `data/logs/.gitkeep` | ⚠️ Empty |  |
-| `data/logs/errors_20251016.log` | ⚠️ Stub/Partial |  |
-| `data/logs/errors_20251017.log` | ⚠️ Stub/Partial |  |
-| `data/logs/errors_20251019.log` | ⚠️ Stub/Partial |  |
-| `data/logs/errors_20251021.log` | ⚠️ Stub/Partial |  |
-| `data/logs/errors_20251022.log` | ⚠️ Stub/Partial |  |
-| `data/logs/lotus_20251016.log` | ⚠️ Stub/Partial |  |
-| `data/logs/lotus_20251017.log` | ⚠️ Stub/Partial |  |
-| `data/logs/lotus_20251019.log` | ⚠️ Stub/Partial |  |
-| `data/logs/lotus_20251021.log` | ⚠️ Stub/Partial |  |
-| `data/logs/lotus_20251022.log` | ⚠️ Stub/Partial |  |
 | `data/logs/nucleus.log` | ⚠️ Empty |  |
-| `data/memory/chromadb/.gitkeep` | ⚠️ Empty |  |
-| `data/memory/embeddings/.gitkeep` | ⚠️ Empty |  |
-| `data/memory/snapshots/.gitkeep` | ⚠️ Empty |  |
-| `data/state/.gitkeep` | ⚠️ Empty |  |
 | `data/state/module_state.json` | ⚠️ Empty |  |
 | `data/state/pid.lock` | ⚠️ Empty |  |
-| `diagnose_manifests.py` | ✅ Coded |  |
 | `docker-compose.yml` | ⚠️ Empty |  |
 | `docs/API_REFERENCE.md` | ⚠️ Empty |  |
 | `docs/ARCHITECTURE.md` | ✅ Complete |  |
-| `docs/Basic-Explainer-Python-Async-Pub/Sub-Manifests.md` | ✅ Complete |  |
 | `docs/CONFIGURATION.md` | ⚠️ Empty |  |
 | `docs/DEPLOYMENT.md` | ⚠️ Empty |  |
-| `docs/FINAL_README.md` | ✅ Complete |  |
 | `docs/GETTING_STARTED.md` | ✅ Complete |  |
 | `docs/INDEX_Session_2.md` | ✅ Complete |  |
-| `docs/LOTUS_Complete_Implementation_Guide.md` | ✅ Complete |  |
-| `docs/LOTUS_FULLSTEP_EXECUTION_GUIDE.md` | ✅ Complete |  |
-| `docs/LOTUS_IMPLEMENTATION_CHECKLIST.md` | ✅ Complete |  |
-| `docs/MASTER_INDEX.md` | ✅ Complete |  |
-| `docs/MEM_INTEGRATION_GUIDE.md` | ✅ Complete |  |
-| `docs/MEM_SYS_MANIFEST.txt` | ⚠️ Stub/Partial |  |
 | `docs/MODULE_DEVELOPMENT.md` | ⚠️ Empty |  |
 | `docs/README_SESSION_1_STATUS.md` | ✅ Complete |  |
 | `docs/SESSION_2_SUMMARY_(CLEAN).md` | ✅ Complete |  |
@@ -387,49 +267,26 @@
 | `docs/examples/advanced_module.py` | ⚠️ Empty |  |
 | `docs/examples/basic_module.py` | ✅ Coded |  |
 | `docs/examples/custom_provider.py` | ⚠️ Empty |  |
-| `fix_manifests.py` | ✅ Coded |  |
-| `flow.dot` | ⚠️ Stub/Partial |  |
 | `lib/__init__.py` | ✅ Coded |  |
-| `lib/__pycache__/__init__.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/__pycache__/config.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/__pycache__/decorators.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/__pycache__/exceptions.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/__pycache__/logging.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/__pycache__/message_bus.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/__pycache__/module.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/__pycache__/providers.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/__pycache__/utils.cpython-310.pyc` | ⚠️ Stub/Partial |  |
 | `lib/config.py` | ✅ Coded |  |
 | `lib/decorators.py` | ✅ Coded |  |
 | `lib/exceptions.py` | ✅ Coded |  |
 | `lib/logging.py` | ✅ Coded |  |
-| `lib/memory/__init__.py` | ✅ Coded |  |
-| `lib/memory/__pycache__/__init__.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `lib/memory/base.py` | ✅ Coded |  |
-| `lib/memory/long_term.py` | ✅ Coded |  |
-| `lib/memory/persistent.py` | ✅ Coded |  |
-| `lib/memory/retrieval.py` | ✅ Coded |  |
-| `lib/memory/short_term.py` | ✅ Coded |  |
-| `lib/memory/working_memory.py` | ✅ Coded |  |
+| `lib/memory.py` | ✅ Coded |  |
 | `lib/message_bus.py` | ✅ Coded |  |
 | `lib/module.py` | ✅ Coded |  |
-| `lib/original_memory.py` | ✅ Coded |  |
 | `lib/providers.py` | ✅ Coded |  |
-| `lib/security.py` | ✅ Coded |  |
+| `lib/security.py` | ⚠️ Empty |  |
 | `lib/utils.py` | ✅ Coded |  |
-| `lib/utils.py.backup` | ⚠️ Stub/Partial |  |
-| `lib/validators.py` | ✅ Coded |  |
-| `lotus_flow_mapper.py` | ✅ Coded |  |
-| `lotus_import_paths_reference.md` | ✅ Complete |  |
+| `lib/validators.py` | ⚠️ Empty |  |
 | `modules/__init__.py` | ⚠️ Empty |  |
-| `modules/__pycache__/__init__.cpython-310.pyc` | ⚠️ Stub/Partial |  |
 | `modules/capability_modules/__init__.py` | ⚠️ Empty |  |
 | `modules/capability_modules/code_assistant/__init__.py` | ⚠️ Empty |  |
 | `modules/capability_modules/code_assistant/analyzer.py` | ⚠️ Empty |  |
 | `modules/capability_modules/code_assistant/debugger.py` | ⚠️ Empty |  |
 | `modules/capability_modules/code_assistant/generator.py` | ⚠️ Empty |  |
-| `modules/capability_modules/code_assistant/logic.py` | ✅ Coded |  |
-| `modules/capability_modules/code_assistant/manifest.yaml` | ✅ Complete |  |
+| `modules/capability_modules/code_assistant/logic.py` | ⚠️ Empty |  |
+| `modules/capability_modules/code_assistant/manifest.yaml` | ⚠️ Empty |  |
 | `modules/capability_modules/code_assistant/module.json` | ⚠️ Empty |  |
 | `modules/capability_modules/code_assistant/patterns.py` | ⚠️ Empty |  |
 | `modules/capability_modules/code_assistant/refactor.py` | ⚠️ Empty |  |
@@ -440,126 +297,107 @@
 | `modules/capability_modules/screen_analyzer/__init__.py` | ⚠️ Empty |  |
 | `modules/capability_modules/screen_analyzer/capture.py` | ⚠️ Empty |  |
 | `modules/capability_modules/screen_analyzer/change_detector.py` | ⚠️ Empty |  |
-| `modules/capability_modules/screen_analyzer/logic.py` | ✅ Coded |  |
-| `modules/capability_modules/screen_analyzer/manifest.yaml` | ✅ Complete |  |
-| `modules/capability_modules/screen_analyzer/module.json` | ✅ Complete |  |
+| `modules/capability_modules/screen_analyzer/logic.py` | ⚠️ Empty |  |
+| `modules/capability_modules/screen_analyzer/manifest.yaml` | ⚠️ Empty |  |
+| `modules/capability_modules/screen_analyzer/module.json` | ⚠️ Empty |  |
 | `modules/capability_modules/screen_analyzer/ocr.py` | ⚠️ Empty |  |
 | `modules/capability_modules/screen_analyzer/visual_analyzer.py` | ⚠️ Empty |  |
 | `modules/capability_modules/self_modifier/__init__.py` | ⚠️ Empty |  |
 | `modules/capability_modules/self_modifier/deployer.py` | ⚠️ Empty |  |
 | `modules/capability_modules/self_modifier/generator.py` | ⚠️ Empty |  |
-| `modules/capability_modules/self_modifier/logic.py` | ✅ Coded |  |
-| `modules/capability_modules/self_modifier/manifest.yaml` | ✅ Complete |  |
-| `modules/capability_modules/self_modifier/module.json` | ✅ Complete |  |
+| `modules/capability_modules/self_modifier/logic.py` | ⚠️ Empty |  |
+| `modules/capability_modules/self_modifier/manifest.yaml` | ⚠️ Empty |  |
+| `modules/capability_modules/self_modifier/module.json` | ⚠️ Empty |  |
 | `modules/capability_modules/self_modifier/sandbox.py` | ⚠️ Empty |  |
 | `modules/capability_modules/self_modifier/validator.py` | ⚠️ Empty |  |
 | `modules/capability_modules/self_modifier/version_control.py` | ⚠️ Empty |  |
 | `modules/capability_modules/task_delegator/__init__.py` | ⚠️ Empty |  |
-| `modules/capability_modules/task_delegator/logic.py` | ✅ Coded |  |
-| `modules/capability_modules/task_delegator/manifest.yaml` | ✅ Complete |  |
-| `modules/capability_modules/task_delegator/module.json` | ✅ Complete |  |
+| `modules/capability_modules/task_delegator/logic.py` | ⚠️ Empty |  |
+| `modules/capability_modules/task_delegator/manifest.yaml` | ⚠️ Empty |  |
+| `modules/capability_modules/task_delegator/module.json` | ⚠️ Empty |  |
 | `modules/capability_modules/task_delegator/parallel.py` | ⚠️ Empty |  |
 | `modules/capability_modules/task_delegator/router.py` | ⚠️ Empty |  |
 | `modules/capability_modules/task_delegator/synthesizer.py` | ⚠️ Empty |  |
 | `modules/capability_modules/task_delegator/task_analyzer.py` | ⚠️ Empty |  |
 | `modules/capability_modules/voice_interface/__init__.py` | ⚠️ Empty |  |
-| `modules/capability_modules/voice_interface/logic.py` | ✅ Coded |  |
-| `modules/capability_modules/voice_interface/manifest.yaml` | ✅ Complete |  |
-| `modules/capability_modules/voice_interface/module.json` | ✅ Complete |  |
+| `modules/capability_modules/voice_interface/logic.py` | ⚠️ Empty |  |
+| `modules/capability_modules/voice_interface/manifest.yaml` | ⚠️ Empty |  |
+| `modules/capability_modules/voice_interface/module.json` | ⚠️ Empty |  |
 | `modules/capability_modules/voice_interface/stt.py` | ⚠️ Empty |  |
 | `modules/capability_modules/voice_interface/tts.py` | ⚠️ Empty |  |
 | `modules/capability_modules/voice_interface/voice_profiles.py` | ⚠️ Empty |  |
 | `modules/capability_modules/voice_interface/wake_word.py` | ⚠️ Empty |  |
 | `modules/core_modules/__init__.py` | ⚠️ Empty |  |
-| `modules/core_modules/__pycache__/__init__.cpython-310.pyc` | ⚠️ Stub/Partial |  |
 | `modules/core_modules/memory/__init__.py` | ⚠️ Empty |  |
-| `modules/core_modules/memory/__pycache__/__init__.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `modules/core_modules/memory/__pycache__/logic.cpython-310.pyc` | ⚠️ Stub/Partial |  |
 | `modules/core_modules/memory/consolidation.py` | ✅ Coded |  |
 | `modules/core_modules/memory/logic.py` | ✅ Coded |  |
 | `modules/core_modules/memory/long_term.py` | ⚠️ Empty |  |
 | `modules/core_modules/memory/manifest.yaml` | ✅ Complete |  |
-| `modules/core_modules/memory/manifest.yaml.backup` | ⚠️ Stub/Partial |  |
 | `modules/core_modules/memory/module.json` | ✅ Complete |  |
-| `modules/core_modules/memory/original_consolidation.py` | ✅ Coded |  |
-| `modules/core_modules/memory/original_logic.py` | ✅ Coded |  |
 | `modules/core_modules/memory/persistent.py` | ⚠️ Empty |  |
 | `modules/core_modules/memory/retrieval.py` | ⚠️ Empty |  |
 | `modules/core_modules/memory/short_term.py` | ⚠️ Empty |  |
 | `modules/core_modules/memory/working_memory.py` | ⚠️ Empty |  |
 | `modules/core_modules/perception/__init__.py` | ⚠️ Empty |  |
-| `modules/core_modules/perception/__pycache__/logic.cpython-310.pyc` | ⚠️ Stub/Partial |  |
 | `modules/core_modules/perception/clipboard_monitor.py` | ⚠️ Empty |  |
 | `modules/core_modules/perception/file_watcher.py` | ⚠️ Empty |  |
 | `modules/core_modules/perception/input_processor.py` | ⚠️ Empty |  |
 | `modules/core_modules/perception/logic.py` | ✅ Coded |  |
 | `modules/core_modules/perception/manifest.yaml` | ✅ Complete |  |
-| `modules/core_modules/perception/manifest.yaml.backup` | ⚠️ Stub/Partial |  |
 | `modules/core_modules/perception/module.json` | ✅ Complete |  |
 | `modules/core_modules/providers/__init__.py` | ⚠️ Empty |  |
-| `modules/core_modules/providers/__pycache__/logic.cpython-310.pyc` | ⚠️ Stub/Partial |  |
 | `modules/core_modules/providers/anthropic.py` | ⚠️ Empty |  |
 | `modules/core_modules/providers/base_provider.py` | ⚠️ Empty |  |
 | `modules/core_modules/providers/google.py` | ⚠️ Empty |  |
 | `modules/core_modules/providers/litellm.py` | ⚠️ Empty |  |
 | `modules/core_modules/providers/logic.py` | ✅ Coded |  |
 | `modules/core_modules/providers/manifest.yaml` | ✅ Complete |  |
-| `modules/core_modules/providers/manifest.yaml.backup` | ⚠️ Stub/Partial |  |
 | `modules/core_modules/providers/module.json` | ✅ Complete |  |
 | `modules/core_modules/providers/ollama.py` | ⚠️ Empty |  |
 | `modules/core_modules/providers/openai.py` | ⚠️ Empty |  |
 | `modules/core_modules/providers/openrouter.py` | ⚠️ Empty |  |
-| `modules/core_modules/providers/xai.py` | ⚠️ Empty |  |
 | `modules/core_modules/reasoning/README.md` | ⚠️ Empty |  |
 | `modules/core_modules/reasoning/__init__.py` | ⚠️ Empty |  |
-| `modules/core_modules/reasoning/__pycache__/logic.cpython-310.pyc` | ⚠️ Stub/Partial |  |
-| `modules/core_modules/reasoning/context_builder.py` | ✅ Coded |  |
-| `modules/core_modules/reasoning/last_logic.py` | ✅ Coded |  |
+| `modules/core_modules/reasoning/context_builder.py` | ⚠️ Empty |  |
 | `modules/core_modules/reasoning/logic.py` | ✅ Coded |  |
-| `modules/core_modules/reasoning/logic.py.backup` | ⚠️ Stub/Partial |  |
 | `modules/core_modules/reasoning/manifest.yaml` | ✅ Complete |  |
 | `modules/core_modules/reasoning/module.json` | ⚠️ Empty |  |
-| `modules/core_modules/reasoning/prompt_builder.py` | ✅ Coded |  |
-| `modules/core_modules/reasoning/react_engine.py` | ✅ Coded |  |
-| `modules/core_modules/reasoning/tool_manager.py` | ✅ Coded |  |
+| `modules/core_modules/reasoning/react_engine.py` | ⚠️ Empty |  |
+| `modules/core_modules/reasoning/tool_manager.py` | ⚠️ Empty |  |
 | `modules/hello_world_module/__init__.py` | ⚠️ Empty |  |
 | `modules/hello_world_module/logic.py` | ✅ Coded |  |
 | `modules/hello_world_module/manifest.yaml` | ✅ Complete |  |
 | `modules/integration_modules/__init__.py` | ⚠️ Empty |  |
 | `modules/integration_modules/browser_control/__init__.py` | ⚠️ Empty |  |
-| `modules/integration_modules/browser_control/logic.py` | ✅ Coded |  |
-| `modules/integration_modules/browser_control/manifest.yaml` | ✅ Complete |  |
-| `modules/integration_modules/browser_control/module.json` | ✅ Complete |  |
+| `modules/integration_modules/browser_control/logic.py` | ⚠️ Empty |  |
+| `modules/integration_modules/browser_control/manifest.yaml` | ⚠️ Empty |  |
+| `modules/integration_modules/browser_control/module.json` | ⚠️ Empty |  |
 | `modules/integration_modules/browser_control/parser.py` | ⚠️ Empty |  |
 | `modules/integration_modules/browser_control/playwright_driver.py` | ⚠️ Empty |  |
 | `modules/integration_modules/browser_control/selenium_driver.py` | ⚠️ Empty |  |
 | `modules/integration_modules/computer_use/__init__.py` | ⚠️ Empty |  |
 | `modules/integration_modules/computer_use/executor.py` | ⚠️ Empty |  |
 | `modules/integration_modules/computer_use/keyboard.py` | ⚠️ Empty |  |
-| `modules/integration_modules/computer_use/logic.py` | ✅ Coded |  |
-| `modules/integration_modules/computer_use/manifest.yaml` | ✅ Complete |  |
+| `modules/integration_modules/computer_use/logic.py` | ⚠️ Empty |  |
+| `modules/integration_modules/computer_use/manifest.yaml` | ⚠️ Empty |  |
 | `modules/integration_modules/computer_use/module.json` | ⚠️ Empty |  |
 | `modules/integration_modules/computer_use/mouse.py` | ⚠️ Empty |  |
 | `modules/integration_modules/computer_use/screenshot.py` | ⚠️ Empty |  |
 | `modules/integration_modules/ide_integration/__init__.py` | ⚠️ Empty |  |
 | `modules/integration_modules/ide_integration/jetbrains.py` | ⚠️ Empty |  |
-| `modules/integration_modules/ide_integration/logic.py` | ✅ Coded |  |
+| `modules/integration_modules/ide_integration/logic.py` | ⚠️ Empty |  |
 | `modules/integration_modules/ide_integration/lsp_client.py` | ⚠️ Empty |  |
-| `modules/integration_modules/ide_integration/manifest.yaml` | ✅ Complete |  |
-| `modules/integration_modules/ide_integration/module.json` | ✅ Complete |  |
+| `modules/integration_modules/ide_integration/manifest.yaml` | ⚠️ Empty |  |
+| `modules/integration_modules/ide_integration/module.json` | ⚠️ Empty |  |
 | `modules/integration_modules/ide_integration/vscode.py` | ⚠️ Empty |  |
 | `modules/integration_modules/mcp_protocol/__init__.py` | ⚠️ Empty |  |
 | `modules/integration_modules/mcp_protocol/client.py` | ⚠️ Empty |  |
-| `modules/integration_modules/mcp_protocol/logic.py` | ✅ Coded |  |
-| `modules/integration_modules/mcp_protocol/manifest.yaml` | ✅ Complete |  |
-| `modules/integration_modules/mcp_protocol/module.json` | ✅ Complete |  |
+| `modules/integration_modules/mcp_protocol/logic.py` | ⚠️ Empty |  |
+| `modules/integration_modules/mcp_protocol/manifest.yaml` | ⚠️ Empty |  |
+| `modules/integration_modules/mcp_protocol/module.json` | ⚠️ Empty |  |
 | `modules/integration_modules/mcp_protocol/server.py` | ⚠️ Empty |  |
 | `modules/integration_modules/mcp_protocol/tools.py` | ⚠️ Empty |  |
 | `nucleus.py` | ✅ Coded |  |
-| `orginal_requirements.txt` | ⚠️ Stub/Partial |  |
-| `original_cli.py` | ✅ Coded |  |
-| `original_nucleus.py` | ✅ Coded |  |
-| `redis-cli-inspect-logs.md` | ✅ Complete |  |
 | `registry/community/catalog.json` | ⚠️ Empty |  |
 | `registry/official/catalog.json` | ⚠️ Empty |  |
 | `registry/private/catalog.json` | ⚠️ Empty |  |
@@ -569,16 +407,13 @@
 | `scripts/dev/generate_module.py` | ⚠️ Empty |  |
 | `scripts/dev/reset_db.sh` | ⚠️ Empty |  |
 | `scripts/dev/test_module.py` | ⚠️ Empty |  |
-| `scripts/install_module.py` | ✅ Coded |  |
+| `scripts/install_module.py` | ⚠️ Empty |  |
 | `scripts/migrate.py` | ⚠️ Empty |  |
 | `scripts/restore.py` | ⚠️ Empty |  |
 | `scripts/setup.sh` | ⚠️ Empty |  |
-| `scripts/validate_lotus.py` | ✅ Coded |  |
 | `setup.py` | ⚠️ Empty |  |
-| `test_publish.py` | ✅ Coded |  |
 | `tests/__init__.py` | ⚠️ Empty |  |
-| `tests/conftest.py` | ✅ Coded |  |
-| `tests/integration/test_events.py` | ✅ Coded |  |
+| `tests/conftest.py` | ⚠️ Empty |  |
 | `tests/integration/test_full_workflow.py` | ✅ Coded |  |
 | `tests/integration/test_module_loading.py` | ⚠️ Empty |  |
 | `tests/integration/test_multi_module.py` | ⚠️ Empty |  |
@@ -586,45 +421,26 @@
 | `tests/unit/test_message_bus.py` | ⚠️ Empty |  |
 | `tests/unit/test_module_system.py` | ⚠️ Empty |  |
 | `tests/unit/test_nucleus.py` | ⚠️ Empty |  |
-| `var/chroma/chroma.sqlite3` | ⚠️ Stub/Partial |  |
 
 ## 🔍 Duplicates/Conflicts (e.g., manifest.yaml in multiple modules)
 
-- **.gitkeep** in: `data/logs/.gitkeep`, `data/memory/embeddings/.gitkeep`, `data/memory/snapshots/.gitkeep`, `data/memory/chromadb/.gitkeep`, `data/cache/.gitkeep`, `data/knowledge/postgres/.gitkeep`, `data/knowledge/backups/.gitkeep`, `data/state/.gitkeep`
+- **README.md** in: `modules/core_modules/reasoning/README.md`, `README.md`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **README.md** in: `modules/core_modules/reasoning/README.md`, `config/modules/README.md`, `README.md`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **__init__.cpython-310.pyc** in: `lib/memory/__pycache__/__init__.cpython-310.pyc`, `lib/__pycache__/__init__.cpython-310.pyc`, `modules/core_modules/memory/__pycache__/__init__.cpython-310.pyc`, `modules/core_modules/__pycache__/__init__.cpython-310.pyc`, `modules/__pycache__/__init__.cpython-310.pyc`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **__init__.py** in: `lib/memory/__init__.py`, `lib/__init__.py`, `modules/__init__.py`, `modules/integration_modules/mcp_protocol/__init__.py`, `modules/integration_modules/computer_use/__init__.py`, `modules/integration_modules/__init__.py`, `modules/integration_modules/ide_integration/__init__.py`, `modules/integration_modules/browser_control/__init__.py`, `modules/capability_modules/__init__.py`, `modules/capability_modules/code_assistant/__init__.py`, `modules/capability_modules/consciousness/__init__.py`, `modules/capability_modules/task_delegator/__init__.py`, `modules/capability_modules/self_modifier/__init__.py`, `modules/capability_modules/screen_analyzer/__init__.py`, `modules/capability_modules/voice_interface/__init__.py`, `modules/hello_world_module/__init__.py`, `modules/core_modules/perception/__init__.py`, `modules/core_modules/memory/__init__.py`, `modules/core_modules/__init__.py`, `modules/core_modules/reasoning/__init__.py`, `modules/core_modules/providers/__init__.py`, `tests/__init__.py`
+- **__init__.py** in: `lib/__init__.py`, `modules/__init__.py`, `modules/integration_modules/mcp_protocol/__init__.py`, `modules/integration_modules/computer_use/__init__.py`, `modules/integration_modules/__init__.py`, `modules/integration_modules/ide_integration/__init__.py`, `modules/integration_modules/browser_control/__init__.py`, `modules/capability_modules/__init__.py`, `modules/capability_modules/code_assistant/__init__.py`, `modules/capability_modules/consciousness/__init__.py`, `modules/capability_modules/task_delegator/__init__.py`, `modules/capability_modules/self_modifier/__init__.py`, `modules/capability_modules/screen_analyzer/__init__.py`, `modules/capability_modules/voice_interface/__init__.py`, `modules/hello_world_module/__init__.py`, `modules/core_modules/perception/__init__.py`, `modules/core_modules/memory/__init__.py`, `modules/core_modules/__init__.py`, `modules/core_modules/reasoning/__init__.py`, `modules/core_modules/providers/__init__.py`, `tests/__init__.py`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
 - **catalog.json** in: `registry/community/catalog.json`, `registry/private/catalog.json`, `registry/official/catalog.json`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
 - **generator.py** in: `modules/capability_modules/code_assistant/generator.py`, `modules/capability_modules/self_modifier/generator.py`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **logic.cpython-310.pyc** in: `modules/core_modules/perception/__pycache__/logic.cpython-310.pyc`, `modules/core_modules/memory/__pycache__/logic.cpython-310.pyc`, `modules/core_modules/reasoning/__pycache__/logic.cpython-310.pyc`, `modules/core_modules/providers/__pycache__/logic.cpython-310.pyc`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
 - **logic.py** in: `modules/integration_modules/mcp_protocol/logic.py`, `modules/integration_modules/computer_use/logic.py`, `modules/integration_modules/ide_integration/logic.py`, `modules/integration_modules/browser_control/logic.py`, `modules/capability_modules/code_assistant/logic.py`, `modules/capability_modules/consciousness/logic.py`, `modules/capability_modules/task_delegator/logic.py`, `modules/capability_modules/self_modifier/logic.py`, `modules/capability_modules/screen_analyzer/logic.py`, `modules/capability_modules/voice_interface/logic.py`, `modules/hello_world_module/logic.py`, `modules/core_modules/perception/logic.py`, `modules/core_modules/memory/logic.py`, `modules/core_modules/reasoning/logic.py`, `modules/core_modules/providers/logic.py`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **long_term.py** in: `lib/memory/long_term.py`, `modules/core_modules/memory/long_term.py`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
 - **manifest.yaml** in: `modules/integration_modules/mcp_protocol/manifest.yaml`, `modules/integration_modules/computer_use/manifest.yaml`, `modules/integration_modules/ide_integration/manifest.yaml`, `modules/integration_modules/browser_control/manifest.yaml`, `modules/capability_modules/code_assistant/manifest.yaml`, `modules/capability_modules/consciousness/manifest.yaml`, `modules/capability_modules/task_delegator/manifest.yaml`, `modules/capability_modules/self_modifier/manifest.yaml`, `modules/capability_modules/screen_analyzer/manifest.yaml`, `modules/capability_modules/voice_interface/manifest.yaml`, `modules/hello_world_module/manifest.yaml`, `modules/core_modules/perception/manifest.yaml`, `modules/core_modules/memory/manifest.yaml`, `modules/core_modules/reasoning/manifest.yaml`, `modules/core_modules/providers/manifest.yaml`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **manifest.yaml.backup** in: `modules/core_modules/perception/manifest.yaml.backup`, `modules/core_modules/memory/manifest.yaml.backup`, `modules/core_modules/providers/manifest.yaml.backup`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
 - **memory.yaml** in: `config/memory.yaml`, `config/modules/memory.yaml`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
 - **module.json** in: `modules/integration_modules/mcp_protocol/module.json`, `modules/integration_modules/computer_use/module.json`, `modules/integration_modules/ide_integration/module.json`, `modules/integration_modules/browser_control/module.json`, `modules/capability_modules/code_assistant/module.json`, `modules/capability_modules/task_delegator/module.json`, `modules/capability_modules/self_modifier/module.json`, `modules/capability_modules/screen_analyzer/module.json`, `modules/capability_modules/voice_interface/module.json`, `modules/core_modules/perception/module.json`, `modules/core_modules/memory/module.json`, `modules/core_modules/reasoning/module.json`, `modules/core_modules/providers/module.json`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **persistent.py** in: `lib/memory/persistent.py`, `modules/core_modules/memory/persistent.py`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
 - **providers.yaml** in: `config/providers.yaml`, `config/modules/providers.yaml`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **retrieval.py** in: `lib/memory/retrieval.py`, `modules/core_modules/memory/retrieval.py`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **short_term.py** in: `lib/memory/short_term.py`, `modules/core_modules/memory/short_term.py`
-  *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
-- **working_memory.py** in: `lib/memory/working_memory.py`, `modules/core_modules/memory/working_memory.py`
   *Resolve:* Keep per-dir (e.g., modules/core_modules/memory/manifest.yaml vs capability_modules/...); no merge needed—unique by path.
 
 ## 🏗️ Implementation Gaps & Next Steps (From Sessions 1-2 + Structure)

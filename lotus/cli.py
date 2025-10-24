@@ -1,3 +1,4 @@
+# --- START OF REFACTORED FILE cli.py ---
 #!/usr/bin/env python3
 """
 LOTUS Command Line Interface - Enhanced Version
@@ -30,8 +31,9 @@ import json
 import signal
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any, List, Tuple
 import subprocess
+import time # Import time for delays and timeouts
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -45,6 +47,7 @@ try:
     from rich.syntax import Syntax
     from rich.live import Live
     from rich.markdown import Markdown
+    from rich.text import Text
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
@@ -57,10 +60,10 @@ else:
     console = None
 
 
-def print_styled(text: str, style: str = ""):
+def print_styled(text: str, style: str = "", **kwargs):
     """Print with style if rich is available"""
     if RICH_AVAILABLE and console:
-        console.print(text, style=style)
+        console.print(text, style=style, **kwargs)
     else:
         print(text)
 
@@ -120,6 +123,12 @@ def start(config, debug, no_daemon):
             if pid == 0:
                 # Child process
                 os.setsid()
+                
+                # Close stdin/stdout/stderr to detach from terminal
+                sys.stdin.close()
+                sys.stdout = open(os.devnull, 'w')
+                sys.stderr = open(os.devnull, 'w')
+
                 nucleus = Nucleus(config_path=config)
                 
                 # Save PID
@@ -205,7 +214,6 @@ def restart():
     ctx.invoke(stop)
     
     # Wait a moment
-    import time
     time.sleep(2)
     
     # Start
@@ -245,10 +253,10 @@ def status(json_output):
         if RICH_AVAILABLE and console:
             # Create rich table
             table = Table(show_header=False, box=None)
-            table.add_row("Uptime:", status_data.get("uptime", "Unknown"))
-            table.add_row("Modules:", str(status_data.get("modules_count", "?")))
-            table.add_row("Memory:", status_data.get("memory", "Unknown"))
-            table.add_row("CPU:", status_data.get("cpu", "Unknown"))
+            table.add_row("Uptime:", Text(status_data.get("uptime", "Unknown"), style="yellow"))
+            table.add_row("Modules:", Text(str(status_data.get("modules_count", "?")), style="magenta"))
+            table.add_row("Memory:", Text(status_data.get("memory", "Unknown"), style="cyan"))
+            table.add_row("CPU:", Text(status_data.get("cpu", "Unknown"), style="green"))
             console.print(table)
         else:
             print(f"Uptime: {status_data.get('uptime', 'Unknown')}")
@@ -308,16 +316,31 @@ def get_system_status() -> dict:
             status["cpu"] = f"{cpu:.1f}%"
             
         except ImportError:
+            # psutil not installed
+            pass
+        except psutil.NoSuchProcess:
+            # Process died between check and psutil.Process() call
             pass
         
-        # Get module count from state file
+        # Get module count from state file (this is more reliable if Nucleus updates it)
+        # For a truly accurate count, you'd need a method in Nucleus itself
+        # or poll a dedicated status channel from Nucleus.
+        # For now, let's rely on the internal state if it gets populated.
+        
+        # Note: The original project structure implies Nucleus maintains a module_state.json.
+        # However, the current nucleus.py does not explicitly write active modules to module_state.json.
+        # We'll keep this placeholder but acknowledge it might not be accurate.
         state_file = Path("data/state/module_state.json")
         if state_file.exists():
             try:
                 with open(state_file) as f:
                     module_state = json.load(f)
                     status["modules_count"] = len(module_state.get("active_modules", []))
-            except:
+            except json.JSONDecodeError:
+                # Malformed JSON
+                pass
+            except Exception:
+                # Other file errors
                 pass
         
     except OSError:
@@ -328,8 +351,9 @@ def get_system_status() -> dict:
 
 @cli.command()
 @click.option("--interactive", "-i", is_flag=True, help="Start interactive chat session")
+@click.option("--debug-events", "-d", is_flag=True, help="Show all internal message bus events for debugging")
 @click.argument("message", required=False)
-def chat(interactive, message):
+def chat(interactive, message, debug_events):
     """Chat with LOTUS"""
     # Warn if virtualenv does not appear to be active. This helps avoid
     # the common issue where users open a new terminal and forget to
@@ -346,7 +370,7 @@ def chat(interactive, message):
         
         while True:
             try:
-                user_input = input("You: ")
+                user_input = console.input("[bold green]You:[/bold green] ") # Use rich for input prompt
                 
                 if user_input.lower() in ["exit", "quit", "bye"]:
                     print_styled("\n🌸 Goodbye!\n", "cyan")
@@ -356,8 +380,9 @@ def chat(interactive, message):
                     continue
                 
                 # Send to LOTUS and get response
-                response = send_message_to_lotus(user_input)
-                print_styled(f"\nLOTUS: {response}\n", "green")
+                # Pass debug_events flag to the sending function
+                response = asyncio.run(send_message_to_lotus_async(user_input, debug_events))
+                print_styled(f"\n[bold magenta]LOTUS:[/bold magenta] {response}\n")
                 
             except KeyboardInterrupt:
                 print_styled("\n\n🌸 Chat ended\n", "yellow")
@@ -367,8 +392,8 @@ def chat(interactive, message):
     
     elif message:
         # Single message
-        response = send_message_to_lotus(message)
-        print_styled(f"\n🌸 LOTUS: {response}\n", "green")
+        response = asyncio.run(send_message_to_lotus_async(message, debug_events))
+        print_styled(f"\n[bold magenta]LOTUS:[/bold magenta] {response}\n")
     
     else:
         print_styled("\n✗ Please provide a message or use --interactive\n", "red")
@@ -377,93 +402,107 @@ def chat(interactive, message):
         print_styled("  lotus chat --interactive\n", "dim")
 
 
-def send_message_to_lotus(message: str) -> str:
-    """Send message to running LOTUS instance via Redis pub/sub.
-
-    This publishes the user's text to the `perception.user_input` channel and
-    subscribes to `action.respond` for the system reply. It waits up to
-    `timeout` seconds for a response, then returns the response content or
-    a timeout/error message.
+async def send_message_to_lotus_async(message: str, debug_events: bool = False) -> str:
     """
-    import asyncio
+    Send message to running LOTUS instance via Redis pub/sub and wait for response.
+    Includes an event listener for debugging.
+    """
     from lib.message_bus import MessageBus
 
-    timeout = 15.0
+    bus = MessageBus()
+    response_queue = asyncio.Queue()
+    event_log: List[Dict[str, Any]] = [] # To store all captured events
 
-    async def _send_and_wait():
-        bus = MessageBus()
-        try:
-            await bus.connect()
-        except Exception as e:
-            return f"Error connecting to message bus: {e}"
-        # Use Redis Streams to poll for the latest response instead of relying
-        # on a short-lived pubsub subscription (which can race with pubsub
-        # connection setup in redis.asyncio). This is more robust for CLI
-        # clients that connect briefly to publish and await a response.
+    async def _event_handler(channel: str, data: Dict[str, Any]):
+        """Handler for all subscribed events"""
+        event_entry = {"channel": channel, "data": data, "timestamp": datetime.utcnow().isoformat()}
+        event_log.append(event_entry)
+        
+        if debug_events:
+            print_styled(f"[bold dim purple]  Event: {channel}[/bold dim purple]", highlight=False)
+            if channel == "cognition.thought":
+                 print_styled(f"[dim grey]    Thought: {data.get('thought',{}).get('understanding','')[:70]}...[/dim grey]", highlight=False)
+            elif channel == "cognition.tool_call":
+                 print_styled(f"[dim grey]    Tool: {data.get('tool')}, Params: {data.get('params')}[/dim grey]", highlight=False)
+            elif channel == "action.respond":
+                 print_styled(f"[bold yellow]    LOTUS Response: {data.get('content','')[:70]}...[/bold yellow]", highlight=False)
 
-        # Publish the user input
-        payload = {"text": message, "context": {"source": "cli"}}
-        try:
-            await bus.publish("perception.user_input", payload)
-        except Exception as e:
-            try:
-                await bus.disconnect()
-            except Exception:
-                pass
-            return f"Error publishing message: {e}"
+        if channel == "action.respond":
+            await response_queue.put(data.get("content", "(empty response)"))
 
-        # Poll the stream for a new action.respond entry
-        import time
-        from datetime import datetime
+    # Use a unique session ID for this interaction for better filtering if needed
+    session_id = f"cli-chat-{int(time.time() * 1000)}"
+    user_payload = {"text": message, "context": {"source": "cli", "session_id": session_id}}
 
-        start_time = datetime.utcnow()
-        deadline = time.time() + timeout
+    response_content = "(No response from LOTUS within timeout)"
+    # Give plenty of time for LLM response, but also for debugging in case of hang
+    timeout = 60.0 
 
-        while time.time() < deadline:
-            try:
-                latest = await bus.get_latest("action.respond")
-            except Exception as e:
-                # If history retrieval fails, break and return error
-                try:
-                    await bus.disconnect()
-                except Exception:
-                    pass
-                return f"Error reading response stream: {e}"
-
-            if latest:
-                try:
-                    # latest['timestamp'] is ISO format
-                    msg_time = datetime.fromisoformat(latest.get("timestamp"))
-                except Exception:
-                    msg_time = None
-
-                if msg_time is None or msg_time >= start_time:
-                    # Found a response that is new enough
-                    try:
-                        await bus.disconnect()
-                    except Exception:
-                        pass
-                    # latest['data'] contains the original payload published by modules
-                    data = latest.get("data") or {}
-                    return data.get("content") or data.get("text") or "(empty response)"
-
-            await asyncio.sleep(0.25)
-
-        try:
-            await bus.disconnect()
-        except Exception:
-            pass
-        return "(No response from LOTUS within timeout)"
-
-    # Run the async send/wait logic
     try:
-        return asyncio.run(_send_and_wait())
+        if RICH_AVAILABLE and console:
+            # Use Live context for progress spinner and dynamic output
+            with Live(
+                Text("Waiting for LOTUS...", style="bold yellow"),
+             #   spinner="dots",
+                refresh_per_second=4,
+                console=console
+            ) as live:
+                await bus.connect()
+                
+                # Subscribe to all relevant channels for debugging
+                await bus.subscribe("perception.*", _event_handler)
+                await bus.subscribe("cognition.*", _event_handler)
+                await bus.subscribe("action.*", _event_handler)
+                await bus.subscribe("memory.*", _event_handler)
+                await bus.subscribe("system.*", _event_handler) # Catch any system events
+
+                live.update(Text("Publishing message...", style="bold yellow"))
+                await bus.publish("perception.user_input", user_payload)
+                
+                # Wait for response with timeout
+                try:
+                    live.update(Text("LOTUS is thinking...", style="bold cyan"))
+                    response_content = await asyncio.wait_for(response_queue.get(), timeout=timeout)
+                    live.update(Text("LOTUS responded!", style="bold green"))
+                except asyncio.TimeoutError:
+                    live.update(Text("LOTUS timed out.", style="bold red"))
+                    response_content = "(No response from LOTUS within timeout)"
+                except Exception as e:
+                    live.update(Text(f"Error during response: {e}", style="bold red"))
+                    response_content = f"Error during response: {e}"
+        else: # No Rich available, fallback to basic print
+            print_styled("Connecting to LOTUS...", "yellow")
+            await bus.connect()
+            await bus.publish("perception.user_input", user_payload)
+            print_styled("LOTUS is thinking...", "cyan")
+            try:
+                response_content = await asyncio.wait_for(response_queue.get(), timeout=timeout)
+            except asyncio.TimeoutError:
+                response_content = "(No response from LOTUS within timeout)"
+            except Exception as e:
+                response_content = f"Error during response: {e}"
+
     except Exception as e:
-        return f"Error sending message: {e}"
+        print_styled(f"Failed to connect to message bus: {e}", "bold red")
+        return f"Error connecting to LOTUS: {e}"
+    finally:
+        try:
+            # Unsubscribe from all channels before disconnecting
+            if bus.connected:
+                await bus.unsubscribe("perception.*", _event_handler)
+                await bus.unsubscribe("cognition.*", _event_handler)
+                await bus.unsubscribe("action.*", _event_handler)
+                await bus.unsubscribe("memory.*", _event_handler)
+                await bus.unsubscribe("system.*", _event_handler)
+                await bus.disconnect()
+        except Exception as e:
+            print_styled(f"Error disconnecting from message bus: {e}", "red")
+
+    return response_content
 
 
 @cli.command()
-@click.option("--type", "-t", type=click.Choice(["all", "core", "capability", "integration"]), 
+@click.option("--type", "-t", type=click.Choice(["all", "core", "capability", "integration", "personality"]), 
               default="all", help="Filter by module type")
 @click.option("--json-output", is_flag=True, help="Output as JSON")
 def modules(type, json_output):
@@ -482,13 +521,14 @@ def modules(type, json_output):
         table.add_column("Name", style="cyan")
         table.add_column("Type", style="yellow")
         table.add_column("Version", style="green")
-        table.add_column("Status", style="magenta")
+        table.add_column("Status", style="magenta") # This status is heuristic, not live
         
         for module in modules_list:
-            status = "✓ Active" if module.get("active") else "○ Inactive"
+            # Heuristic: if core module, assume active. Otherwise, hard to tell without querying nucleus.
+            status = "✓ Active" if module["type"] == "core_modules" else "○ Inactive/Unknown"
             table.add_row(
                 module["name"],
-                module["type"],
+                module["type"].replace("_modules", "").capitalize(), # Nicer type name
                 module.get("version", "?"),
                 status
             )
@@ -496,52 +536,60 @@ def modules(type, json_output):
         console.print(table)
     else:
         for module in modules_list:
-            status = "[ACTIVE]" if module.get("active") else "[INACTIVE]"
-            print(f"{status} {module['name']} ({module['type']}) v{module.get('version', '?')}")
+            status = "[ACTIVE]" if module["type"] == "core_modules" else "[INACTIVE/UNKNOWN]"
+            print(f"{status} {module['name']} ({module['type'].replace('_modules', '').capitalize()}) v{module.get('version', '?')}")
     
     print()
 
 
 def discover_modules(filter_type: str = "all") -> list:
-    """Discover installed modules"""
-    modules = []
-    modules_dir = Path("modules")
+    """Discover installed modules by reading manifest files"""
+    modules_data = []
+    modules_base_dir = Path("modules")
     
-    if not modules_dir.exists():
-        return modules
+    if not modules_base_dir.exists():
+        return modules_data
     
-    # Scan module directories
-    for type_dir in ["core_modules", "capability_modules", "integration_modules"]:
-        type_path = modules_dir / type_dir
+    type_dirs_map = {
+        "core": "core_modules",
+        "capability": "capability_modules",
+        "integration": "integration_modules",
+        "personality": "personalities"
+    }
+    
+    target_dirs = [type_dirs_map[k] for k in type_dirs_map if filter_type == "all" or filter_type == k]
+
+    for type_dir_name in target_dirs:
+        type_path = modules_base_dir / type_dir_name
         if not type_path.exists():
             continue
         
-        module_type = type_dir.replace("_modules", "")
-        
-        if filter_type != "all" and filter_type != module_type:
-            continue
-        
-        for module_dir in type_path.iterdir():
-            if not module_dir.is_dir():
+        for module_path in type_path.iterdir():
+            if not module_path.is_dir():
                 continue
             
-            manifest = module_dir / "manifest.yaml"
-            if not manifest.exists():
+            manifest_path = module_path / "manifest.yaml"
+            if not manifest_path.exists():
                 continue
             
-            # Parse manifest
-            import yaml
-            with open(manifest) as f:
-                manifest_data = yaml.safe_load(f)
-            
-            modules.append({
-                "name": manifest_data.get("name", module_dir.name),
-                "type": module_type,
-                "version": manifest_data.get("version", "?"),
-                "active": True  # TODO: Check actual status
-            })
+            try:
+                import yaml
+                with open(manifest_path) as f:
+                    manifest_data = yaml.safe_load(f)
+                
+                module_name = manifest_data.get("name", module_path.name)
+                
+                modules_data.append({
+                    "name": module_name,
+                    "type": type_dir_name, # Keep internal type for filtering, convert for display
+                    "version": manifest_data.get("version", "0.0.0"),
+                    "description": manifest_data.get("description", "No description provided."),
+                    "path": str(module_path)
+                })
+            except Exception as e:
+                print_styled(f"✗ Error loading manifest for {module_path.name}: {e}", "red")
     
-    return modules
+    return modules_data
 
 
 @cli.command()
@@ -559,19 +607,28 @@ def config(module_name, edit):
     if edit:
         # Open in editor
         editor = os.environ.get("EDITOR", "nano")
-        subprocess.run([editor, str(config_file)])
+        try:
+            subprocess.run([editor, str(config_file)], check=True)
+            print_styled(f"\n✓ Config for {module_name} updated.\n", "green")
+        except subprocess.CalledProcessError:
+            print_styled(f"\n✗ Error opening editor or saving config for {module_name}.\n", "red")
+        except FileNotFoundError:
+            print_styled(f"\n✗ Editor '{editor}' not found. Please set EDITOR environment variable or install it.\n", "red")
     else:
         # Display config
-        print_styled(f"\n🌸 Config for {module_name}\n", "bold cyan")
+        print_styled(f"\n🌸 Config for [bold cyan]{module_name}[/bold cyan]\n", "bold")
         
-        with open(config_file) as f:
-            content = f.read()
-        
-        if RICH_AVAILABLE and console:
-            syntax = Syntax(content, "yaml", theme="monokai", line_numbers=True)
-            console.print(syntax)
-        else:
-            print(content)
+        try:
+            with open(config_file) as f:
+                content = f.read()
+            
+            if RICH_AVAILABLE and console:
+                syntax = Syntax(content, "yaml", theme="monokai", line_numbers=True)
+                console.print(syntax)
+            else:
+                print(content)
+        except Exception as e:
+            print_styled(f"✗ Error reading config file: {e}", "red")
         
         print()
 
@@ -580,35 +637,80 @@ def config(module_name, edit):
 @click.option("--tail", "-f", is_flag=True, help="Follow log file")
 @click.option("--lines", "-n", default=50, help="Number of lines to show")
 @click.option("--module", "-m", help="Show logs for specific module")
-def logs(tail, lines, module):
+@click.option("--level", "-l", help="Filter logs by level (e.g., INFO, DEBUG, ERROR)")
+def logs(tail, lines, module, level):
     """View LOTUS logs"""
     
+    log_dir = Path("data/logs")
+    if not log_dir.exists():
+        print_styled(f"\n✗ Log directory not found: {log_dir}\n", "red")
+        return
+
     if module:
-        log_file = Path(f"data/logs/modules/{module}.log")
+        log_file = log_dir / "modules" / f"{module}.log"
     else:
-        log_file = Path("data/logs/nucleus.log")
+        log_file = log_dir / "nucleus.log"
     
     if not log_file.exists():
         print_styled(f"\n✗ Log file not found: {log_file}\n", "red")
         return
     
+    # Base command for `tail`
+    cmd = ["tail"]
     if tail:
-        # Follow log file
-        try:
-            subprocess.run(["tail", "-f", str(log_file)])
-        except KeyboardInterrupt:
-            print()
+        cmd.append("-f")
     else:
-        # Show last N lines
-        with open(log_file) as f:
-            lines_list = f.readlines()
-            
-            print_styled(f"\n🌸 Last {lines} lines of {log_file.name}\n", "bold cyan")
-            
-            for line in lines_list[-lines:]:
+        cmd.extend(["-n", str(lines)])
+    cmd.append(str(log_file))
+
+    try:
+        # Use subprocess.Popen for filtering, especially with `tail -f`
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        
+        print_styled(f"\n🌸 Showing logs from [bold cyan]{log_file.name}[/bold cyan]\n", "bold")
+
+        # Read output line by line and filter
+        for line in iter(process.stdout.readline, ''):
+            if level and level.upper() not in line.upper():
+                continue
+            if RICH_AVAILABLE and console:
+                # Basic rich formatting based on log level hint
+                if "CRITICAL" in line:
+                    console.print(line.strip(), style="bold red reverse")
+                elif "ERROR" in line:
+                    console.print(line.strip(), style="bold red")
+                elif "WARNING" in line:
+                    console.print(line.strip(), style="yellow")
+                elif "INFO" in line:
+                    console.print(line.strip(), style="green")
+                elif "DEBUG" in line:
+                    console.print(line.strip(), style="dim blue")
+                else:
+                    console.print(line.strip())
+            else:
                 print(line, end="")
             
-            print()
+            if not tail: # If not tailing, print and exit after processing relevant lines
+                # This might need more complex logic to count filtered lines vs total lines
+                pass
+
+        # Handle any remaining stderr output
+        stderr_output = process.stderr.read()
+        if stderr_output:
+            print_styled(f"\n[bold red]Error from tail command:[/bold red]\n{stderr_output}", "red")
+
+    except FileNotFoundError:
+        print_styled(f"\n✗ Command '{cmd[0]}' not found. Ensure it's in your PATH.\n", "red")
+    except KeyboardInterrupt:
+        print_styled("\n\n🌸 Log viewing ended.\n", "yellow")
+    except Exception as e:
+        print_styled(f"\n✗ Error viewing logs: {e}\n", "red")
+    finally:
+        if 'process' in locals() and process.poll() is None:
+            process.terminate()
+            process.wait(timeout=5) # Give it a moment to terminate gracefully
+            if process.poll() is None:
+                process.kill()
 
 
 @cli.command()
@@ -619,11 +721,32 @@ def test():
     # Run pytest
     try:
         import pytest
-        exit_code = pytest.main(["-v", "tests/", "--color=yes"])
-        sys.exit(exit_code)
+        # Use subprocess to run pytest for better control and output capture
+        result = subprocess.run([sys.executable, "-m", "pytest", "-v", "tests/", "--color=yes"], capture_output=True, text=True)
+        
+        if RICH_AVAILABLE and console:
+            if result.returncode == 0:
+                console.print(Panel("✓ All tests passed!", style="bold green"))
+            else:
+                console.print(Panel("✗ Some tests failed!", style="bold red"))
+            console.print(result.stdout)
+            if result.stderr:
+                console.print(Text("Stderr during tests:", style="bold yellow"))
+                console.print(result.stderr)
+        else:
+            print(result.stdout)
+            if result.stderr:
+                print("Stderr during tests:")
+                print(result.stderr)
+        
+        sys.exit(result.returncode)
+
     except ImportError:
         print_styled("✗ pytest not installed", "red")
         print_styled("  Run: pip install pytest\n", "yellow")
+        sys.exit(1)
+    except Exception as e:
+        print_styled(f"✗ An unexpected error occurred while running tests: {e}", "bold red")
         sys.exit(1)
 
 
@@ -633,25 +756,153 @@ def doctor():
     print_styled("\n🌸 LOTUS System Diagnostic\n", "bold cyan")
     
     # Run diagnostic script
-    diagnostic_script = Path(__file__).parent / "session7_diagnostic.py"
+    diagnostic_script = Path(__file__).parent / "scripts" / "dev" / "validate_lotus.py" # Assuming diagnostic script is here based on project structure
     
     if diagnostic_script.exists():
-        subprocess.run([sys.executable, str(diagnostic_script)])
+        try:
+            print_styled(f"  Running diagnostic script: [cyan]{diagnostic_script.name}[/cyan]\n", "dim")
+            subprocess.run([sys.executable, str(diagnostic_script)], check=True)
+            print_styled("\n✓ Diagnostics completed successfully.\n", "bold green")
+        except subprocess.CalledProcessError:
+            print_styled("\n✗ Diagnostics found issues. Please review output above.\n", "bold red")
+        except Exception as e:
+            print_styled(f"\n✗ An error occurred during diagnostics: {e}\n", "bold red")
     else:
-        print_styled("✗ Diagnostic script not found", "red")
-        print_styled(f"  Expected: {diagnostic_script}\n", "yellow")
+        print_styled(f"✗ Diagnostic script not found at expected path: [yellow]{diagnostic_script}[/yellow]\n", "red")
+        print_styled("  Please ensure 'scripts/dev/validate_lotus.py' exists.\n", "yellow")
 
 
 @cli.command()
-@click.argument("module_path")
+@click.argument("module_source") # Can be path, URL, or registry name
 @click.option("--name", help="Module name (auto-detected if not provided)")
-def install(module_path, name):
-    """Install a module"""
-    print_styled(f"\n🌸 Installing module from {module_path}\n", "bold cyan")
+@click.option("--type", type=click.Choice(["capability", "integration", "personality"]), 
+              help="Module type (e.g., 'capability', 'integration')")
+@click.option("--force", is_flag=True, help="Force overwrite if module exists")
+def install(module_source, name, type, force):
+    """Install a module from a path, URL, or registry"""
+    print_styled(f"\n🌸 Installing module from [bold cyan]{module_source}[/bold cyan]\n", "bold")
     
-    # TODO: Implement module installation
-    print_styled("✗ Module installation not yet implemented", "yellow")
-    print_styled("  Coming soon!\n", "dim")
+    # You'd integrate with your `scripts/install_module.py` here
+    install_script = Path(__file__).parent / "scripts" / "install_module.py"
+    
+    if not install_script.exists():
+        print_styled(f"✗ Installation script not found: {install_script}", "red")
+        print_styled("  Please ensure 'scripts/install_module.py' exists.\n", "yellow")
+        sys.exit(1)
+
+    cmd = [sys.executable, str(install_script), module_source]
+    if name:
+        cmd.extend(["--name", name])
+    if type:
+        cmd.extend(["--type", type])
+    if force:
+        cmd.append("--force")
+
+    try:
+        print_styled(f"  Executing: {' '.join(cmd)}\n", "dim")
+        subprocess.run(cmd, check=True)
+        print_styled(f"\n✓ Module installed successfully!\n", "bold green")
+    except subprocess.CalledProcessError as e:
+        print_styled(f"\n✗ Module installation failed: {e}", "bold red")
+        print_styled(f"  See error output above for details.\n", "yellow")
+    except Exception as e:
+        print_styled(f"\n✗ An unexpected error occurred during installation: {e}", "bold red")
+    
+    print_styled("  Remember to restart LOTUS if you're not using hot-reloading for new modules.\n", "dim")
+
+
+# New script for real-time event flow testing
+@cli.command("test-event-flow")
+@click.argument("message")
+@click.option("--channels", "-c", default="perception.*,cognition.*,action.*,memory.*,system.*", 
+              help="Comma-separated list of channel patterns to subscribe to. Use '*' for all.")
+@click.option("--timeout", "-t", default=30.0, type=float, help="Timeout in seconds to wait for events.")
+def test_event_flow(message: str, channels: str, timeout: float):
+    """
+    Send a message and display real-time event flow from the message bus.
+    Useful for debugging.
+    """
+    from lib.message_bus import MessageBus
+
+    print_styled("\n🌸 LOTUS Event Flow Monitor\n", "bold cyan")
+    print_styled(f"  Message: [bold yellow]'{message}'[/bold yellow]", highlight=False)
+    print_styled(f"  Subscribing to: [cyan]'{channels}'[/cyan]", highlight=False)
+    print_styled(f"  Timeout: [cyan]{timeout} seconds[/cyan]\n", highlight=False)
+
+    bus = MessageBus()
+    event_buffer: List[Tuple[str, Dict[str, Any]]] = []
+    
+    async def _event_collector(channel: str, data: Dict[str, Any]):
+        event_buffer.append((channel, data))
+        # Log to console immediately for real-time feedback
+        timestamp = datetime.utcnow().strftime("%H:%M:%S.%f")[:-3]
+        payload_preview = ""
+        if "data" in data and isinstance(data["data"], dict):
+            # For specific events, show relevant parts
+            if channel == "perception.user_input":
+                payload_preview = f"text='{data['data'].get('text', '')[:50]}...'"
+            elif channel == "cognition.thought":
+                thought_data = data['data'].get('thought', {})
+                understanding = thought_data.get('understanding', '')
+                plan = thought_data.get('plan', [])
+                payload_preview = f"understanding='{understanding[:50]}...', plan='{plan[0] if plan else ''}'"
+            elif channel == "cognition.tool_call":
+                payload_preview = f"tool='{data['data'].get('tool')}', params={data['data'].get('params')}"
+            elif channel == "action.respond":
+                payload_preview = f"content='{data['data'].get('content', '')[:70]}...'"
+            elif "message" in data["data"]: # Generic message
+                payload_preview = f"message='{data['data'].get('message', '')[:50]}...'"
+            elif "content" in data["data"]: # Generic content
+                payload_preview = f"content='{data['data'].get('content', '')[:50]}...'"
+            else: # Fallback for other dicts
+                payload_preview = f"keys={list(data['data'].keys())}"
+        elif isinstance(data["data"], str):
+             payload_preview = f"'{data['data'][:50]}...'"
+        
+        source_mod = data.get("source", "cli")
+        if RICH_AVAILABLE and console:
+            console.print(f"[dim blue]{timestamp}[/dim blue] [bold purple]{source_mod}[/bold purple] -> [cyan]{channel}[/cyan] ({payload_preview})", highlight=False)
+        else:
+            print(f"{timestamp} {source_mod} -> {channel} ({payload_preview})")
+
+
+    async def _run_event_test():
+        try:
+            await bus.connect()
+            
+            # Subscribe to specified channels
+            patterns = [p.strip() for p in channels.split(',')]
+            for pattern in patterns:
+                await bus.subscribe(pattern, _event_collector)
+            
+            print_styled("\n[bold yellow]--- PUBLISHING MESSAGE ---[/bold yellow]")
+            user_payload = {"text": message, "context": {"source": "cli-test-event-flow"}}
+            await bus.publish("perception.user_input", user_payload)
+            print_styled("[bold yellow]--------------------------[/bold yellow]\n")
+
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                await asyncio.sleep(0.1) # Keep event loop running
+            
+            print_styled(f"\n[bold yellow]--- TIMEOUT REACHED ({timeout}s) ---[/bold yellow]")
+            print_styled(f"[bold green]Total events captured:[/bold green] {len(event_buffer)}")
+
+        except asyncio.CancelledError:
+            print_styled("\n[yellow]Event flow test cancelled.[/yellow]")
+        except Exception as e:
+            print_styled(f"\n[bold red]Error during event flow test: {e}[/bold red]", highlight=False)
+        finally:
+            print_styled("\n[dim]Disconnecting from message bus...[/dim]")
+            if bus.connected:
+                for pattern in patterns:
+                    try:
+                        await bus.unsubscribe(pattern, _event_collector)
+                    except Exception:
+                        pass # Ignore unsubscribe errors during cleanup
+                await bus.disconnect()
+            print_styled("[dim]Disconnected.[/dim]")
+
+    asyncio.run(_run_event_test())
 
 
 if __name__ == "__main__":

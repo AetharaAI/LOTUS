@@ -1,0 +1,31 @@
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+
+memory:
+  working_memory:
+    ttl_seconds: 600
+    max_items: 100
+  short_term:
+    ttl_hours: 24
+    max_items: 1000
+  long_term:
+    collection_name: lotus_memories
+    embedding_model: all-MiniLM-L6-v2
+  persistent:
+    table_name: lotus_knowledge
+  consolidation:
+    enabled: false
+
+providers:
+  anthropic:
+    enabled: false
+  openai:
+    enabled: false
+  ollama:
+    enabled: false
+
+system:
+  personality: ash
+  max_iterations: 6

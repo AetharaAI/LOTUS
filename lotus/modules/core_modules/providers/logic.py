@@ -141,6 +141,13 @@ class ProviderModule(BaseModule):
 
         # Route and call provider synchronously
         provider_name, prov = self._route_request(req)
+
+        # Debug: log the routing decision
+        try:
+            self.logger.debug(f"[providers] routing complete() -> provider={provider_name} model={req.model}")
+        except Exception:
+            pass
+
         # Use provider.complete which returns an LLMResponse
         response = await prov.complete(
             prompt=req.prompt,
@@ -148,6 +155,14 @@ class ProviderModule(BaseModule):
             max_tokens=req.max_tokens,
             temperature=req.temperature
         )
+
+        # Debug: log response preview before returning
+        try:
+            preview = getattr(response, 'content', str(response))
+            preview_text = str(preview)[:1000]
+            self.logger.debug(f"[providers] complete() got response from {provider_name} preview={preview_text}")
+        except Exception:
+            self.logger.exception("[providers] error while logging provider response")
 
         return response
     

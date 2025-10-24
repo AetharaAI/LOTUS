@@ -1,3 +1,17 @@
+"""
+LOTUS Reasoning Engine - ReAct Implementation
+
+This is the brain of LOTUS. It implements the Reason-Act loop:
+1. THINK: Analyze context and understand what needs to be done
+2. PLAN: Break down the task and decide on actions
+3. ACT: Execute tools, delegate tasks, take actions
+4. OBSERVE: Monitor results and detect issues
+5. LEARN: Store successful patterns in memory
+6. LOOP: Continue until goal is achieved
+
+This module coordinates all other modules to accomplish user goals.
+"""
+
 import asyncio
 import json
 import time
@@ -90,17 +104,16 @@ class ReasoningEngine(BaseModule):
     # EVENT HANDLERS
     # ========================================
     
-
     @on_event("perception.user_input")
     async def on_user_input(self, event):
         """
         Handle user text input
-    
+        
         This is the main entry point for user requests
         """
         user_message = event.data.get("text", "")
         context = event.data.get("context", {})
-    
+        
         # Debug: log input + runtime types for critical components
         try:
             mem_type = type(self.memory).__name__ if self.memory is not None else "None"
@@ -126,22 +139,23 @@ class ReasoningEngine(BaseModule):
                 self.logger.debug(f"[debug] memory methods: search={has_search} recall={has_recall} retrieve={has_retrieve}")
         except Exception:
             self.logger.exception("[debug] error probing memory service")
-    
-        # --- START MODIFICATION ---
-        self.logger.debug(f"[on_user_input] Attempting to build initial context.")
-        full_context = {} # Initialize to empty dict for safety
-        try:
-            full_context = await self.build_context(user_message, context)
-            self.logger.debug(f"[on_user_input] Initial context built successfully. Context keys: {list(full_context.keys())}")
-        except Exception as e:
-            self.logger.error(f"Failed to build initial context: {e}", exc_info=True)
-            await self.publish("action.respond", {
-                "content": f"I encountered an error while setting up my context: {str(e)}",
-                "session_id": generate_id("error_session") # Use a new session ID for error response
-            })
-            return # Stop processing if context building fails
         
-        self.logger.debug(f"[on_user_input] Starting ReAct loop session.")
+        # Start a new thinking session
+        session_id = generate_id("session")
+        self.active_sessions[session_id] = {
+            "start_time": timestamp_now(),
+            "user_message": user_message,
+            "context": context,
+            "iteration": 0
+        }
+        
+        # Build initial context
+        full_context = await self.build_context(user_message, context)
+        
+        # Start the ReAct loop
+      #  await self.think_act_loop(session_id, full_context)
+    
+        # ✅ START THE REACT LOOP
         session_id = generate_id("session")
         self.active_sessions[session_id] = {
             "start_time": timestamp_now(),
@@ -149,17 +163,20 @@ class ReasoningEngine(BaseModule):
             "context": full_context,
             "iteration": 0
         }
+        
     
-        # Actually call the loop
+    # ✅ THIS IS WHAT'S MISSING
         try:
             await self.think_act_loop(session_id, full_context)
         except Exception as e:
             self.logger.error(f"ReAct loop failed: {e}", exc_info=True)
             await self.publish("action.respond", {
-                "content": f"I encountered an error during the reasoning process: {str(e)}",
+                "content": f"I encountered an error: {str(e)}",
                 "session_id": session_id
             })
-        # --- END MODIFICATION ---
+
+
+
 
 
     @on_event("perception.voice_input")
@@ -175,7 +192,6 @@ class ReasoningEngine(BaseModule):
                 }
             }
         }
-        # Assuming Event class can be instantiated like this, or pass event.data directly
         await self.on_user_input(type('Event', (), text_event)())
     
     @on_event("action.tool_result")
@@ -200,18 +216,14 @@ class ReasoningEngine(BaseModule):
         THINK -> ACT -> OBSERVE -> LEARN -> LOOP
         """
         context = initial_context
-        session = self.active_sessions.get(session_id) # Use .get for safety, though it should exist
-        if not session:
-            self.logger.error(f"Session {session_id} not found for ReAct loop.")
-            return
-
+        session = self.active_sessions[session_id]
+        
         for iteration in range(self.max_iterations):
             session["iteration"] = iteration
             
-            self.logger.info(f"ReAct iteration {iteration + 1}/{self.max_iterations} for session {session_id}")
+            self.logger.info(f"ReAct iteration {iteration + 1}/{self.max_iterations}")
             
             # ===== THINK =====
-            self.logger.debug(f"[{session_id}] - Thinking phase...")
             thought = await self.think(context)
             self.stats["total_thoughts"] += 1
             
@@ -224,42 +236,30 @@ class ReasoningEngine(BaseModule):
             
             # Check if we're done
             if thought.is_complete:
-                self.logger.info(f"[{session_id}] - Thought indicates task complete. Responding.")
                 await self.respond(thought.response, session_id)
                 self.stats["successful_tasks"] += 1
                 break
             
             # ===== ACT =====
-            self.logger.debug(f"[{session_id}] - Acting phase with {len(thought.actions)} actions...")
             results = await self.act(thought.actions, session_id)
             self.stats["tools_called"] += sum(1 for a in thought.actions if a.type == ActionType.TOOL_CALL)
             self.stats["tasks_delegated"] += sum(1 for a in thought.actions if a.type == ActionType.DELEGATE)
             
             # ===== OBSERVE =====
-            self.logger.debug(f"[{session_id}] - Observing results...")
             observations = await self.observe(results)
             
             # ===== LEARN =====
-            self.logger.debug(f"[{session_id}] - Learning from results...")
             await self.learn(thought, results, session_id)
             
             # Update context for next iteration
-            self.logger.debug(f"[{session_id}] - Updating context for next iteration...")
             context = await self.update_context(context, thought, observations)
             
             # Check if we should stop early
             if any(r.should_stop for r in results):
-                self.logger.info(f"[{session_id}] - An action result requested early stop.")
                 break
-        else: # This block executes if the loop completes normally (i.e., reaches max_iterations)
-            self.logger.warning(f"[{session_id}] - ReAct loop reached max_iterations ({self.max_iterations}) without completion.")
-            await self.respond(f"I've reached my maximum thinking iterations and couldn't complete the task. Perhaps you could rephrase or provide more details?", session_id)
-
-
+        
         # Clean up session
-        if session_id in self.active_sessions:
-            del self.active_sessions[session_id]
-        self.logger.info(f"[{session_id}] - ReAct loop completed or stopped. Session cleaned up.")
+        del self.active_sessions[session_id]
     
     async def think(self, context: Dict) -> Thought:
         """
@@ -271,40 +271,21 @@ class ReasoningEngine(BaseModule):
         - actions: Specific actions to take
         - reasoning: Why these actions
         """
-        self.logger.debug(f"[think] - Starting thinking process for query: {context.get('query', '')[:50]}...")
         # Get relevant memories
         query = context.get("query", "")
-        memories = []
-        try:
-            # Ensure memory service is available before calling it
-            if self.memory and hasattr(self.memory, 'recall'):
-                self.logger.debug(f"[think] - Calling self.memory.recall for query: {query[:50]}...")
-                memories = await self.memory.recall(query, limit=5)
-                self.logger.debug(f"[think] - Received {len(memories)} memories.")
-            else:
-                self.logger.warning("[think] - Memory service or recall method not available. Proceeding without memories.")
-        except Exception as e:
-            self.logger.error(f"[think] - Error recalling memories: {e}", exc_info=True)
-            # Continue without memories if there's an error in recall
-            memories = []
-
+        memories = await self.memory.recall(query, limit=5)
+        
         # Get available tools
         tools = await self.get_available_tools()
         
         # Build reasoning prompt
         prompt = self._build_reasoning_prompt(context, memories, tools)
-        self.logger.debug(f"[think] - Reasoning prompt built. First 500 chars: {prompt[:500]}...")
-
+        
         # Ask LLM to reason
         try:
-            # Ensure LLM service is available
-            if not self.llm or not hasattr(self.llm, 'complete'):
-                raise RuntimeError("LLM service or complete method not available for reasoning.")
-
-            self.logger.debug(f"[think] - Calling LLM with provider: {self.config.providers.get('reasoning', 'claude-sonnet-4')}")
             response = await self.llm.complete(
                 prompt=prompt,
-                provider=self.config.providers.get("reasoning", "claude-sonnet-4"), # Ensure this config path is correct
+                provider=self.config.providers.get("reasoning", "claude-sonnet-4"),
                 temperature=self.thinking_temp,
                 max_tokens=2000
             )
@@ -327,12 +308,11 @@ class ReasoningEngine(BaseModule):
             
             # Parse response into structured Thought
             thought = self._parse_thought(response.content, context)
-            self.logger.debug(f"[think] - Thought parsed. Is complete: {thought.is_complete}")
             
             return thought
             
         except Exception as e:
-            self.logger.error(f"Thinking error: {e}", exc_info=True)
+            self.logger.error(f"Thinking error: {e}")
             # Return a simple fallback thought
             return Thought(
                 understanding="I encountered an error while thinking",
@@ -352,7 +332,7 @@ class ReasoningEngine(BaseModule):
         results = []
         
         for action in actions:
-            self.logger.info(f"Executing action: {action.type.value} for session {session_id}")
+            self.logger.info(f"Executing action: {action.type.value}")
             
             try:
                 if action.type == ActionType.TOOL_CALL:
@@ -373,7 +353,7 @@ class ReasoningEngine(BaseModule):
                     break
                     
             except Exception as e:
-                self.logger.error(f"Action execution error: {e} for session {session_id}", exc_info=True)
+                self.logger.error(f"Action execution error: {e}")
                 results.append(Result(
                     success=False,
                     data=None,
@@ -407,10 +387,6 @@ class ReasoningEngine(BaseModule):
         
         Learn from both successes and failures
         """
-        if not self.memory or not hasattr(self.memory, 'remember'):
-            self.logger.warning(f"[{session_id}] - Memory service not available for learning.")
-            return
-
         # Store the thought process
         await self.memory.remember(
             content=f"Thought: {thought.understanding}. Plan: {', '.join(thought.plan)}. Result: {'success' if all(r.success for r in results) else 'partial success'}",
@@ -441,7 +417,7 @@ class ReasoningEngine(BaseModule):
         tool_name = action.tool
         params = action.params or {}
         
-        self.logger.info(f"Calling tool: {tool_name} with params {params} for session {session_id}")
+        self.logger.info(f"Calling tool: {tool_name}")
         
         # Publish tool call event
         await self.publish("cognition.tool_call", {
@@ -452,7 +428,7 @@ class ReasoningEngine(BaseModule):
         
         # In a real implementation, wait for tool result
         # For now, simulate success
-        await asyncio.sleep(0.1) # Short delay to simulate work
+        await asyncio.sleep(0.1)
         
         return Result(
             success=True,
@@ -467,7 +443,7 @@ class ReasoningEngine(BaseModule):
         # Select best provider for this task
         provider = self._select_provider_for_task(task)
         
-        self.logger.info(f"Delegating task to {provider} for session {session_id}")
+        self.logger.info(f"Delegating task to {provider}")
         
         await self.publish("cognition.delegate", {
             "session_id": session_id,
@@ -490,7 +466,6 @@ class ReasoningEngine(BaseModule):
         """Respond to the user"""
         content = action.content
         
-        self.logger.info(f"Responding to user for session {session_id}: {content[:100]}...")
         await self.publish("action.respond", {
             "session_id": session_id,
             "content": content,
@@ -506,14 +481,8 @@ class ReasoningEngine(BaseModule):
     async def query_memory(self, action: Action, session_id: str) -> Result:
         """Query memory system"""
         query = action.params.get("query", "")
-        self.logger.info(f"Querying memory for session {session_id}: {query[:100]}...")
         
-        memories = []
-        if self.memory and hasattr(self.memory, 'recall'):
-            memories = await self.memory.recall(query, limit=5)
-            self.logger.debug(f"Received {len(memories)} memories from query.")
-        else:
-            self.logger.warning(f"[{session_id}] - Memory service or recall method not available for querying.")
+        memories = await self.memory.recall(query, limit=5)
         
         return Result(
             success=True,
@@ -527,7 +496,6 @@ class ReasoningEngine(BaseModule):
     
     async def build_context(self, query: str, additional_context: Dict = None) -> Dict:
         """Build full context for reasoning"""
-        self.logger.debug(f"[build_context] - Starting for query: {query[:50]}...")
         context = {
             "query": query,
             "timestamp": timestamp_now(),
@@ -535,37 +503,12 @@ class ReasoningEngine(BaseModule):
         }
         
         # Add relevant memories
-        memories = []
-        try:
-            if self.memory and hasattr(self.memory, 'recall'):
-                self.logger.debug(f"[build_context] - Calling self.memory.recall for query: {query[:50]}...")
-                memories = await self.memory.recall(query, limit=3)
-                self.logger.debug(f"[build_context] - Received {len(memories)} memories for context.")
-            else:
-                self.logger.warning("[build_context] - Memory service or recall method not available. No memories added to context.")
-        except Exception as e:
-            self.logger.error(f"[build_context] - Error recalling memories during context build: {e}", exc_info=True)
-            # Allow context building to continue without memories if there's an error
-            memories = []
-
+        memories = await self.memory.recall(query, limit=3)
         context["relevant_memories"] = [m.to_dict() for m in memories]
         
         # Add system state
-        # Ensure get_state method is available and properly implemented in BaseModule
-        # Or that 'system' module is loaded and provides state.
-        try:
-            if hasattr(self, 'get_state') and callable(self.get_state): # self.get_state is from BaseModule
-                system_state = await self.get_state("active") # Assuming get_state is an async method
-                context["system_state"] = system_state or {}
-                self.logger.debug(f"[build_context] - Added system state. Keys: {list(context['system_state'].keys()) if context['system_state'] else 'None'}")
-            else:
-                context["system_state"] = {}
-                self.logger.warning("[build_context] - get_state method not available on ReasoningEngine instance.")
-        except Exception as e:
-            self.logger.error(f"[build_context] - Error getting system state: {e}", exc_info=True)
-            context["system_state"] = {} # Fallback to empty state
-
-        self.logger.debug(f"[build_context] - Context building complete.")
+        context["system_state"] = await self.get_state("active") or {}
+        
         return context
     
     async def update_context(self, context: Dict, thought: Thought, observations: List[Dict]) -> Dict:
@@ -573,13 +516,11 @@ class ReasoningEngine(BaseModule):
         context["previous_thought"] = thought.__dict__
         context["previous_observations"] = observations
         context["iteration"] = context.get("iteration", 0) + 1
-        self.logger.debug(f"[update_context] - Context updated for iteration {context['iteration']}.")
         
         return context
     
     async def respond(self, content: str, session_id: str):
         """Send response to user"""
-        self.logger.info(f"Sending final response for session {session_id}: {content[:100]}...")
         await self.publish("action.respond", {
             "session_id": session_id,
             "content": content,
@@ -589,9 +530,7 @@ class ReasoningEngine(BaseModule):
     async def get_available_tools(self) -> List[Dict]:
         """Get list of available tools from all modules"""
         # In real implementation, query module registry
-        # For a genuine AI OS, this would likely query the Nucleus or a ToolManager module
-        # that aggregates tools from all loaded modules.
-        self.logger.debug("[get_available_tools] - Returning mock tools.")
+        # For now, return mock tools
         return [
             {"name": "search_web", "description": "Search the web"},
             {"name": "write_code", "description": "Write code"},
@@ -605,16 +544,13 @@ class ReasoningEngine(BaseModule):
         
         # Route to appropriate model
         if complexity == "high" or domain == "architecture":
-            selected_provider = "claude-opus-4"
+            return "claude-opus-4"
         elif domain == "code":
-            selected_provider = self.config.providers.get("reasoning", "claude-sonnet-4")
+            return self.config.providers.get("reasoning", "claude-sonnet-4")
         elif complexity == "low":
-            selected_provider = self.config.providers.get("simple", "gpt-4o-mini")
+            return self.config.providers.get("simple", "gpt-4o-mini")
         else:
-            selected_provider = self.config.providers.get("reasoning", "claude-sonnet-4")
-
-        self.logger.debug(f"[select_provider] - Task complexity='{complexity}', domain='{domain}'. Selected provider: '{selected_provider}'.")
-        return selected_provider
+            return self.config.providers.get("reasoning", "claude-sonnet-4")
     
     def _build_reasoning_prompt(self, context: Dict, memories: List, tools: List[Dict]) -> str:
         """Build the prompt for reasoning"""
@@ -650,7 +586,7 @@ Respond in JSON format:
 }}
 
 Think step by step."""
-        self.logger.debug("[_build_reasoning_prompt] - Reasoning prompt assembled.")
+        
         return prompt
     
     def _format_memories(self, memories: List) -> str:
@@ -660,9 +596,7 @@ Think step by step."""
         
         formatted = []
         for mem in memories[:3]:  # Limit to 3
-            # Ensure 'content' exists and is a string, handle if m.to_dict() is used
-            mem_content = mem.get("content", str(mem)) if isinstance(mem, dict) else (mem.content if hasattr(mem, 'content') else str(mem))
-            formatted.append(f"- {mem_content[:200]}")
+            formatted.append(f"- {mem.content[:200]}")
         
         return "\n".join(formatted)
     
@@ -672,18 +606,16 @@ Think step by step."""
             return "No tools available."
         
         formatted = []
-        for tool_item in tools: # Renamed 'tool' to 'tool_item' to avoid conflict with decorator
-            formatted.append(f"- {tool_item['name']}: {tool_item['description']}")
+        for tool in tools:
+            formatted.append(f"- {tool['name']}: {tool['description']}")
         
         return "\n".join(formatted)
     
     def _parse_thought(self, response_text: str, context: Dict) -> Thought:
         """Parse LLM response into Thought object"""
-        self.logger.debug(f"[_parse_thought] - Attempting to parse LLM response.")
         try:
             # Try to parse as JSON
             data = json.loads(response_text)
-            self.logger.debug(f"[_parse_thought] - LLM response parsed as JSON.")
             
             # Parse actions
             actions = []
@@ -710,34 +642,20 @@ Think step by step."""
             
         except json.JSONDecodeError:
             # Fallback: treat as simple response
-            self.logger.warning("Failed to parse thought as JSON, using fallback. Response: %s[:500]", response_text[:500])
+            self.logger.warning("Failed to parse thought as JSON, using fallback")
             return Thought(
-                understanding=context.get('query', 'No query available'), # Use .get for safety
+                understanding=context['query'],
                 plan=["Respond to user"],
                 actions=[Action(
                     type=ActionType.RESPOND,
                     content=response_text
                 )],
-                reasoning="Direct response due to JSON parsing failure",
+                reasoning="Direct response",
                 is_complete=True,
                 response=response_text,
                 confidence=0.7
             )
-        except Exception as e:
-            self.logger.error(f"[_parse_thought] - Unexpected error during thought parsing: {e}", exc_info=True)
-            return Thought(
-                understanding=context.get('query', 'No query available'),
-                plan=["Respond with error during parsing"],
-                actions=[Action(
-                    type=ActionType.RESPOND,
-                    content=f"I encountered an internal error while interpreting my thoughts: {str(e)}"
-                )],
-                reasoning="Error during thought parsing fallback",
-                is_complete=True,
-                response=f"I encountered an internal error while interpreting my thoughts: {str(e)}",
-                confidence=0.0
-            )
-
+    
     # ========================================
     # TOOLS
     # ========================================
@@ -745,7 +663,6 @@ Think step by step."""
     @tool("think")
     async def think_tool(self, context: Dict) -> Dict:
         """Analyze a situation and determine next actions"""
-        self.logger.debug(f"[think_tool] - Think tool called with context keys: {list(context.keys())}")
         thought = await self.think(context)
         return thought.__dict__
     

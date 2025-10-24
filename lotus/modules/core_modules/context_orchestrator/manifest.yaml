@@ -1,0 +1,32 @@
+# modules/core_modules/context_orchestrator/manifest.yaml
+name: "context_orchestrator"
+version: "1.0.0"
+type: "core" # Critical for system operation
+author: "LOTUS Team"
+license: "MIT"
+description: "Manages perception flow, compresses data, and selectively triggers reasoning."
+priority: "critical"
+
+dependencies:
+  modules: ["memory", "reasoning", "providers"] # Depends on core modules
+  system: ["python>=3.11"]
+
+subscriptions:
+  - pattern: "perception.raw.user_input"
+    handler: "handle_raw_user_input"
+  - pattern: "perception.raw.clipboard_changed"
+    handler: "handle_raw_clipboard_changed"
+  - pattern: "perception.raw.screen_update"
+    handler: "handle_raw_screen_update"
+  # Add other raw perception patterns here as PerceptionModule expands
+
+publications:
+  - "cognition.orchestrated_input" # New channel for ReasoningEngine
+  - "memory.store" # To store compressed/raw memories
+  - "context_orchestrator.status"
+
+config_schema:
+  min_importance_threshold: 0.3 # Minimum importance to trigger reasoning
+  summarize_threshold_chars: 500 # If input > X chars, try to summarize
+  screen_update_diff_threshold: 0.1 # % change on screen to trigger event
+  cooldown_period_seconds: 5 # Cooldown before re-triggering reasoning for similar content

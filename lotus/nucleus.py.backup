@@ -158,9 +158,6 @@ class Nucleus:
             # Initialize message bus (Redis)
             self.message_bus = MessageBus(self.config)
             await self.message_bus.connect()
-            # CRUCIAL: Allow the message_bus's internal _message_handler task to start listening.
-            # A short sleep here can give the background task a chance to fully establish its listener.
-            await asyncio.sleep(0.1) 
             print("   ✓ Redis connected")
             self.logger.info("Redis message bus connected")
 
@@ -198,33 +195,23 @@ class Nucleus:
                     self.chroma = chromadb.PersistentClient(path=chroma_path, settings=Settings(anonymized_telemetry=False))
                     # Optional: create default collection
                     try:
-                        # Attempt to get collection, this also performs a health check
                         self.chroma.get_or_create_collection("lotus_memory")
-                        self.logger.info("ChromaDB default collection checked/created.")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to get/create ChromaDB default collection: {e}. ChromaDB might be partially functional.", exc_info=True)
-
+                    except Exception:
+                        # Some backends may not support collection introspection in the same way
+                        pass
                     self.config.set("services.chroma", self.chroma)
                     print("   ✓ ChromaDB initialized")
                     self.logger.info("ChromaDB initialized")
                 except Exception as e:
                     # Log chroma initialization failure but allow boot to continue
                     print(f"   ⚠️  ChromaDB init skipped/failed: {e}")
-                    self.logger.warning(f"ChromaDB initialization failed or skipped: {e}", exc_info=True)
-                    # Set chroma_client to None so MemoryModule can create NoOp
-                    self.chroma = None 
+                    self.logger.warning(f"ChromaDB initialization failed or skipped: {e}")
             else:
                 print("   ⤷ ChromaDB disabled by config; skipping initialization")
                 self.logger.info("ChromaDB initialization skipped (config) ")
-                # Set chroma_client to None so MemoryModule can create NoOp
-                self.chroma = None
-
-            # IMPORTANT: Re-set chroma_client in config to None if it failed or was skipped,
-            # so dependent modules like MemoryModule can correctly instantiate NoOp.
-            self.config.set("services.chroma", self.chroma)
 
         except Exception as e:
-            self.logger.error(f"Infrastructure init failed: {e}", exc_info=True)
+            self.logger.error(f"Infrastructure init failed: {e}")
             raise
     
     async def _discover_modules(self) -> Dict[str, Path]:
@@ -469,7 +456,7 @@ class Nucleus:
 
                     if not already_registered:
                         await self.message_bus.subscribe(pattern, handler)
-                        self.logger.info(f"Module {module_name} subscribed to {pattern}")
+                        self.logger.debug(f"Module {module_name} subscribed to {pattern}")
                     else:
                         self.logger.debug(f"Module {module_name} skipped duplicate subscription for {pattern} -> {handler_name}")
     
@@ -502,18 +489,15 @@ class Nucleus:
                             else:
                                 self.logger.warning(f"Module {name} health check returned unexpected type: {type(health)}")
                         except Exception as e:
-                            self.logger.error(f"Health check failed for {name}: {e}", exc_info=True)
+                            self.logger.error(f"Health check failed for {name}: {e}")
                 
                 self.last_health_check = datetime.now()
                 
                 # Sleep for health check interval
                 await asyncio.sleep(30)  # Check every 30 seconds
                 
-            except asyncio.CancelledError:
-                self.logger.info("Health monitor task cancelled.")
-                break
             except Exception as e:
-                self.logger.error(f"Health monitor error: {e}", exc_info=True)
+                self.logger.error(f"Health monitor error: {e}")
                 await asyncio.sleep(5)  # Retry after error
     
     async def shutdown(self) -> None:
@@ -526,10 +510,6 @@ class Nucleus:
         # Cancel health monitoring
         if self.health_check_task:
             self.health_check_task.cancel()
-            try:
-                await self.health_check_task
-            except asyncio.CancelledError:
-                pass
         
         # Shutdown modules in reverse order
         for module_name in reversed(self.load_order):
@@ -538,7 +518,7 @@ class Nucleus:
                     await self.modules[module_name].shutdown()
                     self.logger.info(f"Module {module_name} shutdown")
                 except Exception as e:
-                    self.logger.error(f"Error shutting down {module_name}: {e}", exc_info=True)
+                    self.logger.error(f"Error shutting down {module_name}: {e}")
         
         # Disconnect infrastructure
         if self.message_bus:
@@ -546,13 +526,7 @@ class Nucleus:
 
         # Dispose database engine
         if hasattr(self, "db_engine"):
-            self.logger.debug("Disposing PostgreSQL engine.")
-            try:
-                await self.db_engine.dispose()
-                self.logger.info("PostgreSQL engine disposed.")
-            except Exception as e:
-                self.logger.error(f"Error disposing PostgreSQL engine: {e}", exc_info=True)
-
+            await self.db_engine.dispose()
 
         print("👋 LOTUS shutdown complete")
     

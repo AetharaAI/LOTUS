@@ -24,9 +24,9 @@ try:
 except ImportError as e:
     print(f"Warning: Screen analyzer dependencies not available: {e}")
 
-from lib.module import BaseModule
-from lib.decorators import on_event, periodic, tool
-from lib.logging import get_logger
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, periodic, tool
+from lotus.lib.logging import get_logger
 
 logger = get_logger("screen_analyzer")
 
@@ -94,9 +94,11 @@ class ScreenAnalyzer(BaseModule):
             }
             await self.publish("perception.screen_analyzed", result)
     
-    @periodic(interval=2, condition=lambda self: self.monitoring)
+    @periodic(interval=2)
     async def monitor_screen(self) -> None:
         """Periodic screen monitoring"""
+        if not self.monitoring:
+            return
         snapshot = await self._capture_screenshot()
         
         if snapshot and snapshot.changed:

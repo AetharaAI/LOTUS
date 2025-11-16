@@ -17,9 +17,9 @@ try:
 except ImportError as e:
     print(f"Warning: Voice interface dependencies not available: {e}")
 
-from lib.module import BaseModule
-from lib.decorators import on_event, tool
-from lib.logging import get_logger
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool
+from lotus.lib.logging import get_logger
 
 logger = get_logger("voice_interface")
 

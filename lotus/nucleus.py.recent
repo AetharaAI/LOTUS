@@ -213,9 +213,9 @@ class Nucleus:
             self.logger.info("PostgreSQL connected")
 
             # Initialize ChromaDB
-            chroma_enabled = False
+            chroma_enabled = True
             try:
-                chroma_enabled = bool(self.config.get("chroma.enabled", False))
+                chroma_enabled = bool(self.config.get("chroma.enabled", True))
             except Exception:
                 self.logger.warning("Failed to read 'chroma.enabled' from config, assuming disabled.", exc_info=True)
                 chroma_enabled = False

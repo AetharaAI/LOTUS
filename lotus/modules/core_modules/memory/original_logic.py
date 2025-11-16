@@ -1,5 +1,5 @@
-from lib.module import BaseModule
-from lib.decorators import on_event, periodic
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, periodic
 
 class MemoryModule(BaseModule):
     """Memory coordinator - wraps the lib/memory.py system"""

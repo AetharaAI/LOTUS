@@ -8,7 +8,7 @@ description: "Manages perception flow, compresses data, and selectively triggers
 priority: "critical"
 
 dependencies:
-  modules: ["memory", "reasoning", "providers"] # Depends on core modules
+  modules: [] # Depends on core modules
   system: ["python>=3.11"]
 
 subscriptions:
@@ -23,6 +23,8 @@ subscriptions:
 publications:
   - "cognition.orchestrated_input" # New channel for ReasoningEngine
   - "memory.store" # To store compressed/raw memories
+  - "memory.store_raw_data" # New direct method
+  - "memory.store_semantic_summary" # New direct method
   - "context_orchestrator.status"
 
 config_schema:

@@ -1,5 +1,11 @@
 # modules/capability_modules/consciousness/logic.py
 
+import asyncio
+from typing import Optional
+
+from lotus.lib.module import BaseModule
+from lotus.lib.types import Thought
+
 class ConsciousnessModule(BaseModule):
     """
     The missing piece: Active, continuous cognition

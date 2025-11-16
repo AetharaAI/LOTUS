@@ -9,9 +9,9 @@ from typing import Dict, List, Any, Tuple
 from enum import Enum
 from dataclasses import dataclass
 
-from lib.module import BaseModule
-from lib.decorators import on_event, tool
-from lib.logging import get_logger
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool
+from lotus.lib.logging import get_logger
 
 logger = get_logger("task_delegator")
 

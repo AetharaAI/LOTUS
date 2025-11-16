@@ -25,8 +25,8 @@ from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 
-from lib.module import BaseModule
-from lib.decorators import on_event, tool, periodic
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool, periodic
 
 
 @dataclass

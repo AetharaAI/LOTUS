@@ -1,349 +1,252 @@
 """
-Perception Module - Real-Time Input Awareness
+LOTUS Perception Module - Multi-Modal Input Processing
 
-This module gives LOTUS awareness of:
-- File system changes (watchdog)
-- Clipboard content (pyperclip)
-- Working context (inferred from activity)
-
-This is what makes LOTUS feel "alive" - she sees what you're doing.
+This module is responsible for perceiving the environment (screen, clipboard,
+user input, voice, files) and translating raw observations into standardized
+events for the rest of the LOTUS system.
 """
 
 import asyncio
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Set
-from datetime import datetime
 import time
+import json
+import logging
+from typing import Dict, Any, Optional
 
-from lib.module import BaseModule
-from lib.decorators import on_event, periodic
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
+from lotus.lib.module import BaseModule, Event
+from lotus.lib.decorators import on_event, tool, periodic # Import tool decorator explicitly
+
+# Conditional imports for perception sources
+_PYPERCLIP_AVAILABLE = False
 try:
-    from watchdog.observers import Observer
-    from watchdog.events import (
-        FileSystemEventHandler, FileSystemEvent,
-        FileCreatedEvent, FileModifiedEvent, FileDeletedEvent
-    )
-    WATCHDOG_AVAILABLE = True
+    import pyperclip # For clipboard monitoring
+    _PYPERCLIP_AVAILABLE = True
 except ImportError:
-    WATCHDOG_AVAILABLE = False
+    pass
 
+_MSS_AVAILABLE = False
+_PIL_AVAILABLE = False
 try:
-    import pyperclip
-    CLIPBOARD_AVAILABLE = True
+    import mss # For screen capture
+    from PIL import Image # For image processing/diffing
+    _MSS_AVAILABLE = True
+    _PIL_AVAILABLE = True
 except ImportError:
-    CLIPBOARD_AVAILABLE = False
+    pass
 
-
-class FileChangeHandler(FileSystemEventHandler):
-    """Handler for file system events"""
-    
-    def __init__(self, module: 'PerceptionModule'):
-        self.module = module
-        self.last_events: Dict[str, float] = {}
-        self.debounce = module.config.get("perception.file_watching.debounce_seconds", 2)
-        
-    def on_created(self, event: FileSystemEvent):
-        if not event.is_directory:
-            self._handle_event("created", event.src_path)
-    
-    def on_modified(self, event: FileSystemEvent):
-        if not event.is_directory:
-            self._handle_event("modified", event.src_path)
-    
-    def on_deleted(self, event: FileSystemEvent):
-        if not event.is_directory:
-            self._handle_event("deleted", event.src_path)
-    
-    def _handle_event(self, event_type: str, path: str):
-        """Debounce and handle file events"""
-        now = time.time()
-        key = f"{event_type}:{path}"
-        
-        # Check debounce
-        if key in self.last_events:
-            if now - self.last_events[key] < self.debounce:
-                return
-        
-        self.last_events[key] = now
-        
-        # Queue event for async processing
-        asyncio.create_task(
-            self.module._handle_file_event(event_type, path)
-        )
+# Assuming file_watcher would be a separate internal utility or class
+# from .file_watcher import FileWatcher # Example
 
 
 class PerceptionModule(BaseModule):
     """
     Perception System Coordinator
     
-    Monitors:
-    - File system changes
-    - Clipboard content
-    - Working context
-    
-    Provides real-time awareness of user activity.
+    Observes the environment and publishes raw perception events.
+    No longer directly triggers ReasoningEngine, but feeds the ContextOrchestrator.
     """
     
-    async def initialize(self) -> None:
-        """Initialize perception systems"""
+    def __init__(self, name: str, metadata: Dict, message_bus: Any, config: Any, logger: logging.Logger):
+        super().__init__(name, metadata, message_bus, config, logger)
+        self.logger = logging.getLogger(f"lotus.module.{self.name}")
+
+        self.clipboard_monitor_task: Optional[asyncio.Task] = None
+        self.last_clipboard_content: Optional[str] = None
+
+        self.screen_monitor_task: Optional[asyncio.Task] = None
+        self.last_screen_hash: Optional[str] = None
+        self.last_screen_image: Optional[Image.Image] = None
+        
+        self.monitor_clipboard_enabled = self.config.get("perception.clipboard.enabled", True)
+        self.monitor_clipboard_interval = self.config.get("perception.clipboard.interval_seconds", 1.0)
+        self.clipboard_max_chars = self.config.get("perception.clipboard.max_chars", 5000)
+
+        self.monitor_screen_enabled = self.config.get("perception.screen.enabled", False)
+        self.monitor_screen_interval = self.config.get("perception.screen.interval_seconds", 2.0)
+        self.screen_ocr_enabled = self.config.get("perception.screen.ocr_enabled", False)
+
+    async def initialize(self):
+        """Initialize the perception module"""
         self.logger.info("Initializing perception system")
         
-        # File watching
-        self.observers: List[Observer] = []
-        self.watched_paths: Set[Path] = set()
-        self.file_watcher_enabled = self.config.get("perception.file_watching.enabled", True)
-        
-        # Clipboard monitoring
-        self.last_clipboard = ""
-        self.clipboard_enabled = self.config.get("perception.clipboard.enabled", True)
-        self.clipboard_poll_interval = self.config.get("perception.clipboard.poll_interval", 1.0)
-        
-        # Context tracking
-        self.current_context = {
-            "active_file": None,
-            "active_directory": None,
-            "recent_files": [],
-            "working_on": None,
-            "last_activity": None
-        }
-        self.context_enabled = self.config.get("perception.context.enabled", True)
-        
-        # Statistics
-        self.stats = {
-            "files_watched": 0,
-            "file_events": 0,
-            "clipboard_changes": 0,
-            "context_updates": 0
-        }
-        
-        # Start watchers if enabled
-        if self.file_watcher_enabled and WATCHDOG_AVAILABLE:
-            await self._start_file_watchers()
-        elif self.file_watcher_enabled and not WATCHDOG_AVAILABLE:
-            self.logger.warning("File watching requested but watchdog not installed")
-        
-        # Check clipboard availability
-        if self.clipboard_enabled and not CLIPBOARD_AVAILABLE:
-            self.logger.warning("Clipboard monitoring requested but pyperclip not installed")
-            self.clipboard_enabled = False
+        if self.monitor_clipboard_enabled:
+            if _PYPERCLIP_AVAILABLE:
+                self.clipboard_monitor_task = asyncio.create_task(self._monitor_clipboard())
+                self.logger.info("Clipboard monitoring enabled.")
+            else:
+                self.logger.warning("pyperclip not installed. Clipboard monitoring disabled.")
+                self.monitor_clipboard_enabled = False
+
+        if self.monitor_screen_enabled:
+            if _MSS_AVAILABLE and _PIL_AVAILABLE:
+                self.screen_monitor_task = asyncio.create_task(self._monitor_screen())
+                self.logger.info("Screen monitoring enabled.")
+            else:
+                self.logger.warning("mss or Pillow not installed. Screen monitoring disabled.")
+                self.monitor_screen_enabled = False
         
         self.logger.info("Perception system initialized")
     
-    async def _start_file_watchers(self) -> None:
-        """Start watching configured paths"""
-        watch_paths = self.config.get("perception.file_watching.watch_paths", [])
-        
-        for path_str in watch_paths:
-            # Expand user home directory
-            path = Path(path_str).expanduser()
-            
-            if path.exists():
-                await self._watch_path(path)
-            else:
-                self.logger.warning(f"Watch path does not exist: {path}")
-    
-    async def _watch_path(self, path: Path) -> None:
-        """Start watching a specific path"""
-        if path in self.watched_paths:
-            self.logger.debug(f"Already watching: {path}")
-            return
-        
-        try:
-            observer = Observer()
-            handler = FileChangeHandler(self)
-            observer.schedule(handler, str(path), recursive=True)
-            observer.start()
-            
-            self.observers.append(observer)
-            self.watched_paths.add(path)
-            self.stats["files_watched"] += 1
-            
-            self.logger.info(f"Started watching: {path}")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to watch {path}: {e}")
-    
-    @on_event("perception.start_watching")
-    async def handle_start_watching(self, event: Dict[str, Any]) -> None:
-        """
-        Start watching a new path
-        
-        Event data:
-        {
-            "path": "/path/to/watch"
-        }
-        """
-        path_str = event.get("path")
-        if path_str:
-            path = Path(path_str).expanduser()
-            await self._watch_path(path)
-    
-    @on_event("perception.stop_watching")
-    async def handle_stop_watching(self, event: Dict[str, Any]) -> None:
-        """
-        Stop watching a path
-        
-        Event data:
-        {
-            "path": "/path/to/stop"
-        }
-        """
-        path_str = event.get("path")
-        if path_str:
-            path = Path(path_str).expanduser()
-            await self._unwatch_path(path)
-    
-    async def _unwatch_path(self, path: Path) -> None:
-        """Stop watching a specific path"""
-        if path not in self.watched_paths:
-            return
-        
-        # Find and stop the observer for this path
-        for observer in self.observers:
+    async def _monitor_clipboard(self) -> None:
+        """Continuously monitors the clipboard for changes and publishes raw events."""
+        self.logger.debug("Starting clipboard monitor task.")
+        while True:
             try:
-                observer.stop()
-                observer.join()
-                self.observers.remove(observer)
+                current_content = pyperclip.paste()
+                if current_content != self.last_clipboard_content:
+                    content_length = len(current_content)
+                    if content_length > self.clipboard_max_chars:
+                        self.logger.warning(f"Clipboard content too large ({content_length} chars), truncating for raw event.")
+                        display_content = current_content[:self.clipboard_max_chars]
+                    else:
+                        display_content = current_content
+                    
+                    self.logger.debug(f"Clipboard changed ({content_length} chars). Publishing raw event.")
+                    await self.publish("perception.raw.clipboard_changed", {
+                        "content": display_content,
+                        "length": content_length,
+                        "timestamp": time.time(),
+                        "context": {"active_file": None, "active_directory": None},
+                        "source_module": self.name
+                    })
+                    self.last_clipboard_content = current_content
+                
+                await asyncio.sleep(self.monitor_clipboard_interval)
+            except asyncio.CancelledError:
+                self.logger.info("Clipboard monitor task cancelled.")
                 break
             except Exception as e:
-                self.logger.error(f"Error stopping observer: {e}")
+                self.logger.error(f"Error in clipboard monitor: {e}", exc_info=True)
+                await asyncio.sleep(5)
+
+    async def _monitor_screen(self) -> None:
+        """Continuously monitors the screen for changes and publishes raw events."""
+        self.logger.debug("Starting screen monitor task.")
+        with mss.mss() as sct:
+            while True:
+                try:
+                    screenshot_bytes = sct.grab(sct.monitors[0])
+                    current_image = Image.frombytes("RGB", screenshot_bytes.size, screenshot_bytes.rgb)
+
+                    current_hash = self._calculate_image_hash(current_image)
+                    change_percentage = 0.0
+
+                    if self.last_screen_image:
+                        change_percentage = self._calculate_image_diff(self.last_screen_image, current_image)
+                    
+                    text_content = ""
+                    if self.screen_ocr_enabled:
+                        try:
+                            import pytesseract
+                            text_content = pytesseract.image_to_string(current_image)
+                            self.logger.debug(f"OCR extracted text (length: {len(text_content)}) from screen.")
+                        except ImportError:
+                            self.logger.warning("pytesseract not installed, cannot perform OCR. Install with `pip install pytesseract` and configure Tesseract.")
+                            self.screen_ocr_enabled = False
+                        except Exception as ocr_e:
+                            self.logger.error(f"Error during OCR: {ocr_e}", exc_info=True)
+                    
+                    if current_hash != self.last_screen_hash or change_percentage > 0.01:
+                        self.logger.debug(f"Screen changed (hash diff: {current_hash != self.last_screen_hash}, {change_percentage:.2f}% pixel change). Publishing raw event.")
+                        await self.publish("perception.raw.screen_update", {
+                            "image_hash": current_hash,
+                            "change_percentage": change_percentage,
+                            "text_content": text_content,
+                            "image_ref": f"screen_capture_{int(time.time())}.png",
+                            "timestamp": time.time(),
+                            "context": {},
+                            "source_module": self.name
+                        })
+                        self.last_screen_hash = current_hash
+                        self.last_screen_image = current_image
+                    
+                    await asyncio.sleep(self.monitor_screen_interval)
+                except asyncio.CancelledError:
+                    self.logger.info("Screen monitor task cancelled.")
+                    break
+                except Exception as e:
+                    self.logger.error(f"Error in screen monitor: {e}", exc_info=True)
+                    await asyncio.sleep(5)
+
+    def _calculate_image_hash(self, image: Image.Image) -> str:
+        """Calculates a simple perceptual hash of an image for quick comparison."""
+        small_image = image.resize((8, 8), Image.Resampling.LANCZOS).convert("L")
+        pixels = list(small_image.getdata())
+        avg = sum(pixels) / len(pixels)
+        hash_bits = "".join(['1' if p > avg else '0' for p in pixels])
+        return hash_bits
+
+    def _calculate_image_diff(self, img1: Image.Image, img2: Image.Image) -> float:
+        """Calculates the percentage difference between two images."""
+        if img1.size != img2.size:
+            return 1.0
         
-        self.watched_paths.remove(path)
-        self.logger.info(f"Stopped watching: {path}")
-    
-    async def _handle_file_event(self, event_type: str, path: str) -> None:
-        """Process file system event"""
-        # Check ignore patterns
-        ignore_patterns = self.config.get("perception.file_watching.ignore_patterns", [])
-        if any(pattern in path for pattern in ignore_patterns):
-            return
+        diff_pixels = 0
+        img1_gray = img1.convert("L")
+        img2_gray = img2.convert("L")
+
+        for x in range(img1.width):
+            for y in range(img1.height):
+                if img1_gray.getpixel((x, y)) != img2_gray.getpixel((x, y)):
+                    diff_pixels += 1
         
-        self.stats["file_events"] += 1
+        return diff_pixels / (img1.width * img1.height)
+
+    @on_event("perception.user_input")
+    async def on_user_input(self, event: Event) -> None: # Type hint for Event
+        """Handles user text input and publishes it as a raw perception event."""
+        user_message = event.data.get("text", "")
+        context = event.data.get("context", {})
         
-        # Update context
-        await self._update_context_from_file(path)
-        
-        # Publish event
-        await self.publish(f"file.{event_type}", {
-            "path": path,
-            "timestamp": datetime.now().isoformat(),
-            "context": self.current_context
+        self.logger.info(f"Received user text input, publishing to raw channel: {user_message[:100]}...")
+        await self.publish("perception.raw.user_input", {
+            "text": user_message,
+            "context": context,
+            "timestamp": time.time(),
+            "source_module": self.name
         })
+
+    @on_event("perception.voice_input")
+    async def on_voice_input(self, event: Event) -> None: # Type hint for Event
+        """Handles voice input (transcript) and publishes it as a raw perception event."""
+        transcript = event.data.get("transcript", "")
+        context = event.data.get("context", {})
+
+        self.logger.info(f"Received voice input transcript, publishing to raw channel: {transcript[:100]}...")
+        await self.publish("perception.raw.user_input", {
+            "text": transcript,
+            "context": {**context, "modality": "voice"},
+            "timestamp": time.time(),
+            "source_module": self.name
+        })
+
+    @tool("take_screenshot", description="Captures the current screen as an image.", category="perception", parameters={})
+    async def take_screenshot(self) -> Dict[str, Any]:
+        """Tool to manually trigger a screenshot capture."""
+        if not (_MSS_AVAILABLE and _PIL_AVAILABLE):
+            return {"success": False, "error": "mss or Pillow not installed for screenshot."}
         
-        self.logger.debug(f"File {event_type}: {path}")
-    
-    @periodic(interval=1.0)
-    async def monitor_clipboard(self) -> None:
-        """Monitor clipboard for changes"""
-        if not self.clipboard_enabled:
-            return
+        self.logger.info("Tool 'take_screenshot' called.")
+        with mss.mss() as sct:
+            screenshot_bytes = sct.grab(sct.monitors[0])
+            # In a real tool, you'd save this image and return a path/reference
+            return {"success": True, "image_size": screenshot_bytes.size, "message": "Screenshot captured (raw bytes not returned via tool)."}
+
+
+    async def shutdown(self):
+        """Clean shutdown"""
+        self.logger.info("Perception system shutting down...")
+        if self.clipboard_monitor_task:
+            self.clipboard_monitor_task.cancel()
+            try: await self.clipboard_monitor_task
+            except asyncio.CancelledError: pass
+        if self.screen_monitor_task:
+            self.screen_monitor_task.cancel()
+            try: await self.screen_monitor_task
+            except asyncio.CancelledError: pass
         
-        try:
-            current = pyperclip.paste()
-            
-            # Check if changed
-            if current != self.last_clipboard and current:
-                # Check size limit
-                max_size = self.config.get("perception.clipboard.max_size", 10000)
-                if len(current) > max_size:
-                    self.logger.debug("Clipboard content too large, ignoring")
-                    return
-                
-                # Check ignore patterns
-                ignore_patterns = self.config.get("perception.clipboard.ignore_patterns", [])
-                if any(pattern.lower() in current.lower() for pattern in ignore_patterns):
-                    self.logger.debug("Clipboard content matched ignore pattern")
-                    return
-                
-                self.last_clipboard = current
-                self.stats["clipboard_changes"] += 1
-                
-                # Update context
-                await self._update_context_from_clipboard(current)
-                
-                # Publish event
-                await self.publish("clipboard.changed", {
-                    "content": current[:1000],  # Truncate for event
-                    "length": len(current),
-                    "timestamp": datetime.now().isoformat(),
-                    "context": self.current_context
-                })
-                
-                self.logger.debug(f"Clipboard changed ({len(current)} chars)")
-                
-        except Exception as e:
-            self.logger.error(f"Clipboard monitoring error: {e}")
-    
-    @periodic(interval=10)
-    async def update_context(self) -> None:
-        """Periodic context update"""
-        if not self.context_enabled:
-            return
-        
-        # Context inference logic would go here
-        # For now, just track that we're updating
-        self.stats["context_updates"] += 1
-        
-        # Could analyze recent files, clipboard, etc to infer what user is working on
-    
-    async def _update_context_from_file(self, path: str) -> None:
-        """Update working context from file activity"""
-        path_obj = Path(path)
-        
-        # Update active file
-        self.current_context["active_file"] = str(path_obj)
-        self.current_context["active_directory"] = str(path_obj.parent)
-        self.current_context["last_activity"] = datetime.now().isoformat()
-        
-        # Add to recent files
-        recent = self.current_context.get("recent_files", [])
-        if str(path_obj) not in recent:
-            recent.insert(0, str(path_obj))
-            self.current_context["recent_files"] = recent[:10]  # Keep last 10
-        
-        # Try to infer what they're working on
-        if self.config.get("perception.context.infer_from_files", True):
-            self._infer_working_on(path_obj)
-    
-    async def _update_context_from_clipboard(self, content: str) -> None:
-        """Update context from clipboard content"""
-        self.current_context["last_activity"] = datetime.now().isoformat()
-        
-        # Try to infer context from clipboard content
-        if self.config.get("perception.context.infer_from_clipboard", True):
-            self._infer_from_clipboard(content)
-    
-    def _infer_working_on(self, path: Path) -> None:
-        """Infer what user is working on from file path"""
-        # Simple heuristics - could be much more sophisticated
-        if "project" in str(path).lower():
-            self.current_context["working_on"] = "project"
-        elif any(ext in path.suffix for ext in [".py", ".js", ".ts", ".java"]):
-            self.current_context["working_on"] = "coding"
-        elif any(ext in path.suffix for ext in [".md", ".txt", ".doc"]):
-            self.current_context["working_on"] = "writing"
-        elif any(ext in path.suffix for ext in [".csv", ".xlsx", ".json"]):
-            self.current_context["working_on"] = "data_analysis"
-    
-    def _infer_from_clipboard(self, content: str) -> None:
-        """Infer context from clipboard content"""
-        # Simple keyword matching
-        if "def " in content or "function " in content or "class " in content:
-            self.current_context["working_on"] = "coding"
-        elif "https://" in content:
-            self.current_context["working_on"] = "research"
-    
-    async def shutdown(self) -> None:
-        """Shutdown perception system"""
-        self.logger.info("Shutting down perception system")
-        
-        # Stop all file watchers
-        for observer in self.observers:
-            try:
-                observer.stop()
-                observer.join()
-            except Exception as e:
-                self.logger.error(f"Error stopping observer: {e}")
-        
+        await super().shutdown() # Call BaseModule's shutdown for periodic tasks etc.
         self.logger.info("Perception system shutdown complete")

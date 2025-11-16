@@ -1,6 +1,7 @@
 name: perception
 version: 1.0.0
 type: core
+class: PerceptionModule
 priority: high
 description: Input perception system - File watching, clipboard monitoring, and input
   processing
@@ -34,10 +35,16 @@ publications:
   description: Processed input received
 - event: context.changed
   description: Working context changed
+- event: perception.raw.user_input        # For ContextOrchestrator
+- event: perception.raw.clipboard_changed  # For ContextOrchestrator
+- event: perception.raw.screen_update      # For ContextOrchestrator
+- event: perception.status
 dependencies:
+   
+  packages: ["pyperclip", "mss", "Pillow"] # Add explicit package dependencies if they are hard requirements
   modules: []
   system: []
-  packages: []
+  
 config:
   file_watching:
     enabled: true

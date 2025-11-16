@@ -21,9 +21,9 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import hashlib
 
-from lib.module import BaseModule
-from lib.decorators import on_event, tool, periodic
-from lib.memory import (
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool, periodic
+from lotus.lib.memory import (
     WorkingMemory, ShortTermMemory, LongTermMemory, 
     PersistentMemory, MemoryItem
 )

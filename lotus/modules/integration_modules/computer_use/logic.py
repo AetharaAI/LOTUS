@@ -24,8 +24,8 @@ import mss
 from PIL import Image
 import numpy as np
 
-from lib.module import BaseModule
-from lib.decorators import on_event, tool, periodic
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool, periodic
 
 
 @dataclass

@@ -1,6 +1,7 @@
 name: providers
 version: 1.0.0
 type: core
+class: ProvidersModule
 priority: critical
 description: Multi-provider LLM access - Claude, GPT, Gemini, Ollama with intelligent
   routing

@@ -1,0 +1,112 @@
+
+name: "reasoning"
+version: "1.0.0"
+type: "core"
+author: "LOTUS Team"
+license: "MIT"
+description: "The core ReAct reasoning engine (Ash's brain) for intelligent decision making, planning, and tool execution."
+priority: "critical"
+
+dependencies:
+  # Reasoning relies on Memory and Providers, but they are core modules
+  # expected to be loaded by Nucleus and accessed as services.
+  # Explicitly declaring them here can cause circular dependencies if they
+  # also reference reasoning (e.g., for self-reflection in memory).
+  # Instead, they will be accessed via `self.config.get("services.memory")` etc.
+  modules: [] # Removed explicit module dependencies to break cycle.
+  system: ["python>=3.11"]
+
+subscriptions:
+  - pattern: "cognition.orchestrated_input"
+    handler: "on_orchestrated_input"
+  - pattern: "action.tool_result"
+    handler: "on_tool_result"
+  # Add other relevant cognition/action result channels Ash needs to observe
+  # Example: "cognition.delegation_result.*"
+
+publications:
+  - "cognition.thought"
+  - "cognition.tool_call"
+  - "cognition.delegate"
+  - "action.respond"
+  - "reasoning.status"
+  - "memory.store" # Reasoning might store learning patterns
+  - "memory.retrieve" # Reasoning might query memory directly
+
+config_schema:
+  max_iterations: 15 # Overridable from global persona or local config
+  thinking_temperature: 0.7
+  enable_delegation: true
+  # Add specific LLM models for different reasoning tasks if not globally managed by providers
+  providers:
+    reasoning_model: "claude-sonnet-4" # Default for general reasoning
+    high_complexity_model: "claude-opus-4" # For complex delegation
+    code_model: "ollama:deepseek-coder" # For code-related tasks
+    simple_model: "gpt-4o-mini" # For simple responses```
+
+**2. `modules/core_modules/memory/manifest.yaml` (Modified)**
+
+Similar to `reasoning`, `memory` should not declare `providers` or `reasoning` as hard dependencies. It accesses `providers` as a service.
+
+```yaml
+--- START OF REFACTORED FILE modules/core_modules/memory/manifest.yaml ---
+name: "memory"
+version: "1.0.0"
+type: "core"
+author: "LOTUS Team"
+license: "MIT"
+description: "Manages the 4-tier memory architecture (Working, Short-Term, Long-Term, Persistent) for LOTUS."
+priority: "critical"
+
+dependencies:
+  # Memory relies on Providers (for embeddings) but accesses them as services.
+  # No direct module dependency declaration to break potential cycles.
+  modules: [] # Removed explicit module dependencies
+  system: ["python>=3.11"]
+
+subscriptions:
+  - pattern: "memory.store"
+    handler: "handle_store"
+  - pattern: "memory.retrieve"
+    handler: "handle_retrieve"
+  - pattern: "memory.get_context"
+    handler: "handle_get_context"
+  # Add other memory-related events like delete, update, etc.
+
+publications:
+  - "memory.stored"
+  - "memory.retrieved"
+  - "memory.context"
+  - "memory.consolidated"
+  - "memory.error"
+  - "memory.stats"
+
+config_schema:
+  # L1: Working memory (Redis)
+  working_memory:
+    enabled: true
+    max_items: 100
+    ttl_seconds: 600 # 10 minutes
+  
+  # L2: Short-term memory (Redis Streams)
+  short_term:
+    enabled: true
+    ttl_hours: 24 # 24 hours retention
+    max_items: 1000
+  
+  # L3: Long-term memory (ChromaDB vectors)
+  long_term:
+    enabled: true
+    collection_name: "lotus_memories"
+    embedding_model: "all-MiniLM-L6-v2" # SentenceTransformer model name
+  
+  # L4: Persistent knowledge (PostgreSQL)
+  persistent:
+    enabled: true
+    table_name: "lotus_knowledge"
+
+  # Consolidation settings
+  consolidation:
+    enabled: true
+    interval_minutes: 30 # How often to run consolidation
+    importance_threshold: 0.5 # Min importance to promote from L2 to L3

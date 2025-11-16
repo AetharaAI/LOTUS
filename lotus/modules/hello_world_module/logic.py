@@ -11,8 +11,8 @@ This is a simple example module that demonstrates:
 This serves as a template for creating new modules.
 """
 
-from lib.module import BaseModule
-from lib.decorators import on_event, tool, periodic
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool, periodic
 
 
 class HelloWorld(BaseModule):

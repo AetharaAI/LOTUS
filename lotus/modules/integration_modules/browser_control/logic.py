@@ -1,6 +1,6 @@
 """Browser Control Module"""
-from lib.module import BaseModule
-from lib.decorators import on_event, tool
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool
 
 class BrowserControl(BaseModule):
     async def initialize(self) -> None:

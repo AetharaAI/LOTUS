@@ -9,9 +9,9 @@ import asyncio
 import time
 from typing import Dict, List, Any, Optional
 
-from lib.module import BaseModule
-from lib.decorators import on_event, tool, periodic
-from lib.memory import (
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool, periodic
+from lotus.lib.memory import (
     MemoryItem, MemoryType,
     WorkingMemory, ShortTermMemory, LongTermMemory, PersistentMemory,
     MemoryRetrieval, RetrievalConfig, RetrievalStrategy

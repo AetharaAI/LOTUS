@@ -1,0 +1,71 @@
+
+name: "providers"
+version: "1.0.0"
+type: "core"
+author: "LOTUS Team"
+license: "MIT"
+description: "Manages connections and routing to various LLM providers (Anthropic, OpenAI, Ollama, etc.)."
+priority: "critical"
+
+dependencies:
+  # Providers module should ideally have no direct module dependencies
+  # as it is a foundational service provider.
+  modules: [] # Removed explicit module dependencies
+  system: ["python>=3.11"]
+
+subscriptions:
+  - pattern: "llm.complete"
+    handler: "on_llm_complete_request"
+  - pattern: "llm.stream"
+    handler: "on_llm_stream_request"
+  - pattern: "provider.switch"
+    handler: "on_provider_switch_request"
+  # Add more provider-specific command channels if needed (e.g., "llm.configure_model")
+
+publications:
+  - "llm.response"
+  - "llm.stream_chunk"
+  - "llm.error"
+  - "provider.status"
+
+config_schema:
+  # Default provider to use if none is specified in a request
+  default_provider: "claude-sonnet-4"
+
+  # Configuration for Anthropic provider
+  anthropic:
+    enabled: true
+    api_key: "${ANTHROPIC_API_KEY}" # Environment variable lookup
+    models:
+      - claude-opus-4
+      - claude-sonnet-4.5
+      - claude-sonnet-4
+      - claude-haiku # Added haiku for summarization
+    default_model: "claude-sonnet-4"
+
+  # Configuration for OpenAI provider
+  openai:
+    enabled: true
+    api_key: "${OPENAI_API_KEY}"
+    models:
+      - gpt-4o
+      - gpt-4-turbo
+      - gpt-4o-mini # For simple, fast tasks
+    default_model: "gpt-4o"
+
+  # Configuration for Ollama (local LLM)
+  ollama:
+    enabled: false # Set to true if you run Ollama locally
+    base_url: "http://localhost:11434"
+    models:
+      - deepseek-coder # Good for code generation
+      - llama3
+      - mistral
+    default_model: "llama3"
+  
+  # Default models for specific task types (used by ReasoningEngine or ContextOrchestrator)
+  default_summarization: "claude-haiku" # Used by ContextOrchestrator for compression
+  reasoning_model: "claude-sonnet-4"
+  high_complexity_model: "claude-opus-4"
+  code_model: "ollama:deepseek-coder"
+  simple_model: "gpt-4o-mini"

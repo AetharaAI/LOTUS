@@ -1,6 +1,7 @@
 name: "reasoning"
 version: "1.0.0"
 type: "core"
+class: "ReasoningModule"
 author: "LOTUS Team"
 license: "MIT"
 priority: "critical"

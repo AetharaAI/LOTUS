@@ -23,9 +23,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from lib.module import BaseModule
-from lib.decorators import on_event, tool
-from lib.utils import generate_id, timestamp_now
+from lotus.lib.module import BaseModule
+from lotus.lib.decorators import on_event, tool
+from lotus.lib.utils import generate_id, timestamp_now
 
 
 class ActionType(Enum):

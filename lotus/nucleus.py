@@ -167,16 +167,21 @@ class Nucleus:
             # Expose Redis client for modules
             self.config.set("services.redis", self.message_bus.redis)
 
-            # Initialize PostgreSQL
+            # Initialize PostgreSQL (optional for testing)
             db_url = os.environ.get("DATABASE_URL_ASYNC") or os.environ.get("DATABASE_URL")
-            if not db_url:
-                raise RuntimeError("DATABASE_URL_ASYNC or DATABASE_URL is required")
+            if db_url:
+                self.db_engine = create_async_engine(db_url, pool_pre_ping=True)
 
-            self.db_engine = create_async_engine(db_url, pool_pre_ping=True)
+                # Quick liveness ping
+                async with self.db_engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
 
-            # Quick liveness ping
-            async with self.db_engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
+                print("   ✓ PostgreSQL connected")
+                self.logger.info("PostgreSQL database connected")
+                self.config.set("services.db_engine", self.db_engine)
+            else:
+                self.logger.warning("No DATABASE_URL configured - persistent memory will be unavailable")
+                self.db_engine = None
             # Publish to config for modules
             self.config.set("services.db_engine", self.db_engine)
             print("   ✓ PostgreSQL connected")
@@ -349,11 +354,8 @@ class Nucleus:
                 graph[name] = set()
         
         # Topological sort (Kahn's algorithm)
-        in_degree = {name: 0 for name in graph}
-        for deps in graph.values():
-            for dep in deps:
-                if dep in in_degree:
-                    in_degree[dep] += 1
+        # in_degree[X] = number of dependencies X has
+        in_degree = {name: len(deps) for name, deps in graph.items()}
         
         queue = [name for name, degree in in_degree.items() if degree == 0]
         result = []
@@ -373,7 +375,7 @@ class Nucleus:
         # Check for circular dependencies
         if len(result) != len(modules):
             unresolved = set(modules.keys()) - set(result)
-            raise ModuleLoadError(f"Circular dependency detected in modules: {unresolved}")
+            raise ModuleLoadError("circular_dependency", f"Circular dependency detected in modules: {unresolved}")
         
         return result
     

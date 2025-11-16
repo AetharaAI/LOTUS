@@ -1,0 +1,31 @@
+# Example Module: Monitor
+# Subscribes to heartbeat events and logs them
+
+name: "monitor"
+version: "1.0.0"
+type: "core"
+description: "Monitors and logs heartbeat events to demonstrate event subscription"
+author: "UnityKernel"
+
+# Dependencies
+dependencies:
+  modules: ["heartbeat"]  # Depends on heartbeat module
+
+# Event Flow
+provides: []  # Doesn't publish events
+
+consumes:
+  - "heartbeat.tick"  # Subscribes to heartbeats
+
+# Configuration
+config:
+  log_heartbeats: true
+
+# Resource Limits
+priority: "low"
+cpu_limit: 5
+memory_limit: 50
+
+# Lifecycle
+hot_reload: true
+auto_restart: true

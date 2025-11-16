@@ -1,0 +1,36 @@
+# Example Module: Heartbeat
+# Simple module that publishes heartbeat events every N seconds
+
+name: "heartbeat"
+version: "1.0.0"
+type: "core"
+description: "Publishes periodic heartbeat events to demonstrate module system"
+author: "UnityKernel"
+
+# Dependencies
+dependencies:
+  modules: []  # No dependencies
+  system: []
+
+optional_dependencies:
+  modules: []
+
+# Event Flow
+provides:
+  - "heartbeat.tick"
+
+consumes:
+  - "system.ready"
+
+# Configuration
+config:
+  interval: 5  # Heartbeat interval in seconds
+
+# Resource Limits
+priority: "low"
+cpu_limit: 5
+memory_limit: 50
+
+# Lifecycle
+hot_reload: true
+auto_restart: true

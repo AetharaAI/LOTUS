@@ -12,6 +12,7 @@ import { Sidebar } from './Sidebar';
 import { MessageList } from './MessageList';
 import { InputBar } from './InputBar';
 import { Logo } from '../shared/Logo';
+import { ComplianceFooter } from '../shared/ComplianceFooter';
 
 export function ChatInterface() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -82,6 +83,9 @@ export function ChatInterface() {
 
         {/* Input Bar */}
         <InputBar />
+
+        {/* Compliance Footer */}
+        <ComplianceFooter />
       </div>
     </div>
   );

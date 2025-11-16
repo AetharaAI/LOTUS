@@ -533,7 +533,7 @@ class ReasoningEngine(BaseModule):
             "timestamp": timestamp_now(),
             "user_context": additional_context or {},
         }
-        
+
         # Add relevant memories
         memories = []
         try:
@@ -549,6 +549,17 @@ class ReasoningEngine(BaseModule):
             memories = []
 
         context["relevant_memories"] = [m.to_dict() for m in memories]
+
+        # Add vision analysis if query mentions visual content
+        vision_keywords = ["screenshot", "screen", "image", "picture", "photo", "what do you see", "what's on my screen", "show me", "look at"]
+        if any(keyword in query.lower() for keyword in vision_keywords):
+            self.logger.info("[build_context] - Query requires vision, checking for vision module...")
+            # Note: Vision analysis would be triggered here if we had a screen capture
+            # The vision module will respond to perception.screen_capture events
+            context["requires_vision"] = True
+            context["vision_hint"] = "User query mentions visual content - consider requesting screen analysis"
+        else:
+            context["requires_vision"] = False
         
         # Add system state
         # Ensure get_state method is available and properly implemented in BaseModule
@@ -591,12 +602,23 @@ class ReasoningEngine(BaseModule):
         # In real implementation, query module registry
         # For a genuine AI OS, this would likely query the Nucleus or a ToolManager module
         # that aggregates tools from all loaded modules.
-        self.logger.debug("[get_available_tools] - Returning mock tools.")
-        return [
-            {"name": "search_web", "description": "Search the web"},
-            {"name": "write_code", "description": "Write code"},
-            {"name": "analyze_image", "description": "Analyze an image"}
+        self.logger.debug("[get_available_tools] - Returning available tools including vision.")
+
+        tools = [
+            {"name": "search_web", "description": "Search the web for information"},
+            {"name": "write_code", "description": "Write or generate code"},
+            {"name": "read_file", "description": "Read contents of a file"},
+            {"name": "write_file", "description": "Write content to a file"},
         ]
+
+        # Add vision tools - these work via event bus (vision module responds to events)
+        tools.extend([
+            {"name": "analyze_screenshot", "description": "Analyze a screenshot with AI vision - get description, OCR, UI elements"},
+            {"name": "read_screen_text", "description": "Extract all text from a screenshot (OCR)"},
+            {"name": "detect_buttons", "description": "Find clickable UI elements in a screenshot"},
+        ])
+
+        return tools
     
     def _select_provider_for_task(self, task: Dict) -> str:
         """Select best LLM provider for task"""

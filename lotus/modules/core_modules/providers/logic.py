@@ -4,7 +4,7 @@ Provider Module - Multi-Provider LLM Access
 This module manages all LLM provider interactions:
 - Anthropic (Claude)
 - OpenAI (GPT)
-- Google (Gemini)
+- xAI (Grok)
 - Ollama (Local models)
 
 Features:
@@ -23,9 +23,9 @@ from enum import Enum
 from lib.module import BaseModule
 from lib.decorators import on_event, tool
 from lib.providers import (
-    AnthropicProvider, OpenAIProvider, 
-    GoogleProvider, OllamaProvider,
-    ProviderError, ProviderResponse
+    AnthropicProvider, OpenAIProvider,
+    OllamaProvider, XAIProvider,
+    ProviderError, LLMResponse
 )
 
 
@@ -83,13 +83,13 @@ class ProviderModule(BaseModule):
             )
             self.logger.info("Initialized OpenAI provider")
 
-        # Google
-        if self.config.get("providers.google.enabled", False):
-            self.providers["google"] = GoogleProvider(
-                {"api_key": self.config.get("GOOGLE_API_KEY")}
+        # xAI (Grok)
+        if self.config.get("providers.xai.enabled", False):
+            self.providers["xai"] = XAIProvider(
+                {"api_key": self.config.get("XAI_API_KEY")}
             )
-            self.logger.info("Initialized Google provider")
-        
+            self.logger.info("Initialized xAI provider")
+
         # Ollama (local)
         if self.config.get("providers.ollama.enabled", True):
             self.providers["ollama"] = OllamaProvider(

@@ -1,0 +1,57 @@
+# UnityKernel System Configuration
+
+kernel:
+  name: "unity_kernel"
+  version: "0.1.0"
+  log_level: "INFO"
+  hot_reload_config: true
+
+# Event Bus Configuration
+event_bus:
+  # Redis URL (optional - in-memory fallback if not set)
+  # redis_url: "redis://localhost:6379/0"
+  redis_url: null
+
+  # Enable Redis Streams for persistence
+  enable_streams: true
+
+# Priority Processor Configuration
+priority_processor:
+  workers:
+    critical: 4    # Safety-critical tasks
+    high: 8        # Time-sensitive tasks
+    normal: 16     # Standard tasks
+    low: 4         # Background tasks
+    deferred: 2    # Idle-time tasks
+
+# Module System Configuration
+modules:
+  # Auto-discover modules on boot
+  auto_discover: true
+
+  # Paths to search for modules
+  discovery_paths:
+    - "./modules"
+    - "./modules/examples"
+
+  # Auto-load all discovered modules
+  auto_load_core: true
+
+  # Enable hot-reload for modules
+  hot_reload: false  # Set true in development
+
+# Health Monitoring Configuration
+health:
+  # Health check interval (seconds)
+  check_interval: 30
+
+  # Threshold for degraded state (0.0-1.0)
+  # 0.7 = consider degraded if <70% modules healthy
+  degraded_threshold: 0.7
+
+  # Auto-restart failed modules
+  restart_failed_modules: true
+
+  # Resource thresholds for alerts
+  cpu_alert_threshold: 90       # Percent
+  memory_alert_threshold: 4096  # MB

@@ -547,7 +547,7 @@ class Nucleus:
             await self.message_bus.disconnect()
 
         # Dispose database engine
-        if hasattr(self, "db_engine"):
+        if hasattr(self, "db_engine") and self.db_engine is not None:
             self.logger.debug("Disposing PostgreSQL engine.")
             try:
                 await self.db_engine.dispose()

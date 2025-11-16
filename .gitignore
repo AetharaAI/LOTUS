@@ -209,3 +209,4 @@ node_modules/
 .local
 
 # End of .gitignore
+dump.rdb

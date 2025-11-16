@@ -1,0 +1,33 @@
+# LOTUS System Configuration
+
+# Redis Configuration
+redis:
+  host: localhost
+  port: 55678  # Using high random port to avoid conflicts
+  db: 0
+
+# PostgreSQL Configuration (optional)
+database:
+  # Set DATABASE_URL or DATABASE_URL_ASYNC environment variable
+  # Example: postgresql+asyncpg://user:pass@localhost/lotus
+  enabled: false
+
+# ChromaDB Configuration
+chromadb:
+  path: "./data/chromadb"
+  collection: "lotus_memory"
+
+# Module System
+modules:
+  auto_discover: true
+  base_path: "./modules"
+
+# Personality Configuration
+personality:
+  name: "ash"
+  style: "helpful"
+
+# Logging
+logging:
+  level: "INFO"
+  format: "colored"

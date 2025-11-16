@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from ..schemas import ChatRequest, ChatMessage
 from ..services.streaming import sse_stream
-from ..main import get_adapter
+from ..adapter import get_adapter
 from ...lib.logging import get_logger
 
 

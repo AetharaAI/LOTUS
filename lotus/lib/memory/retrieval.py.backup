@@ -1,0 +1,447 @@
+"""
+LOTUS Memory System - Intelligent Cross-Tier Retrieval
+
+This is the "memory retrieval intelligence" of LOTUS - the system that
+searches across all 4 memory tiers and intelligently ranks results.
+
+Key capabilities:
+- Cross-tier search (L1 + L2 + L3 + L4 simultaneously)
+- Smart ranking (relevance + recency + importance + access patterns)
+- Query understanding (semantic vs keyword)
+- Context-aware retrieval (what's needed NOW)
+- Memory reinforcement (strengthens accessed memories)
+
+This is what makes LOTUS's memory system truly intelligent - not just
+storing memories, but UNDERSTANDING which memories matter for the current context.
+"""
+
+import asyncio
+import time
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
+
+from .base import MemoryItem, MemoryType
+from .working_memory import WorkingMemory
+from .short_term import ShortTermMemory
+from .long_term import LongTermMemory
+from .persistent import PersistentMemory
+
+
+class RetrievalStrategy(Enum):
+    """Different retrieval strategies based on query type"""
+    RECENT_CONTEXT = "recent_context"      # Last 10 min (L1 only)
+    TODAY_HISTORY = "today_history"        # Last 24 hours (L1 + L2)
+    SEMANTIC_SEARCH = "semantic_search"    # Meaning-based (L3 focus)
+    FACT_LOOKUP = "fact_lookup"            # Permanent facts (L4)
+    COMPREHENSIVE = "comprehensive"        # Search all tiers
+
+
+@dataclass
+class RetrievalConfig:
+    """Configuration for memory retrieval"""
+    strategy: RetrievalStrategy = RetrievalStrategy.COMPREHENSIVE
+    max_results: int = 10
+    min_relevance: float = 0.3
+    
+    # Tier weights for ranking
+    weight_l1: float = 0.4  # Working memory (most recent)
+    weight_l2: float = 0.3  # Short-term (today)
+    weight_l3: float = 0.2  # Long-term (semantic)
+    weight_l4: float = 0.1  # Persistent (facts)
+    
+    # Ranking factors
+    importance_weight: float = 0.4
+    recency_weight: float = 0.3
+    access_weight: float = 0.2
+    semantic_weight: float = 0.1
+
+
+class MemoryRetrieval:
+    """
+    Intelligent cross-tier memory retrieval system
+    
+    This is the "memory query engine" that:
+    1. Understands what type of information is needed
+    2. Searches appropriate tiers
+    3. Ranks results intelligently
+    4. Reinforces important memories
+    
+    Usage:
+        retrieval = MemoryRetrieval(L1, L2, L3, L4)
+        memories = await retrieval.retrieve("authentication bugs")
+        # Returns relevant memories from all tiers, intelligently ranked
+    """
+    
+    def __init__(self, L1: WorkingMemory, L2: ShortTermMemory, 
+                 L3: LongTermMemory, L4: PersistentMemory):
+        """
+        Initialize retrieval system
+        
+        Args:
+            L1: Working memory tier
+            L2: Short-term memory tier
+            L3: Long-term memory tier
+            L4: Persistent memory tier
+        """
+        self.L1 = L1
+        self.L2 = L2
+        self.L3 = L3
+        self.L4 = L4
+    
+    async def retrieve(self, query: str, config: Optional[RetrievalConfig] = None) -> List[MemoryItem]:
+        """
+        Retrieve memories across all tiers with intelligent ranking
+        
+        This is the main entry point for memory retrieval
+        
+        Process:
+        1. Determine retrieval strategy
+        2. Search appropriate tiers in parallel
+        3. Merge and deduplicate results
+        4. Rank by composite relevance score
+        5. Return top N results
+        
+        Args:
+            query: Search query (natural language)
+            config: Optional retrieval configuration
+            
+        Returns:
+            List of relevant memories, ranked by relevance
+        """
+        if config is None:
+            config = RetrievalConfig()
+        
+        # Determine which tiers to search based on strategy
+        tiers_to_search = self._select_tiers(config.strategy)
+        
+        # Search tiers in parallel
+        search_tasks = []
+        
+        if 'L1' in tiers_to_search:
+            search_tasks.append(self._search_L1(query, config))
+        if 'L2' in tiers_to_search:
+            search_tasks.append(self._search_L2(query, config))
+        if 'L3' in tiers_to_search:
+            search_tasks.append(self._search_L3(query, config))
+        if 'L4' in tiers_to_search:
+            search_tasks.append(self._search_L4(query, config))
+        
+        # Execute searches concurrently
+        tier_results = await asyncio.gather(*search_tasks)
+        
+        # Merge results from all tiers
+        all_memories = []
+        for memories in tier_results:
+            all_memories.extend(memories)
+        
+        # Deduplicate (same memory might be in multiple tiers)
+        unique_memories = self._deduplicate(all_memories)
+        
+        # Rank by relevance
+        ranked_memories = self._rank_memories(unique_memories, query, config)
+        
+        # Filter by minimum relevance
+        filtered_memories = [
+            m for m in ranked_memories 
+            if m.metadata.get('composite_score', 0) >= config.min_relevance
+        ]
+        
+        # Return top N
+        return filtered_memories[:config.max_results]
+    
+    async def get_recent_context(self, minutes: int = 10) -> List[MemoryItem]:
+        """
+        Get recent conversation context for reasoning engine
+        
+        This is optimized for building context for the current conversation
+        
+        Args:
+            minutes: How many minutes back to look
+            
+        Returns:
+            Recent memories, chronologically ordered
+        """
+        memories = await self.L1.get_recent_context(minutes)
+        
+        # Sort chronologically (oldest first for conversation flow)
+        memories.sort(key=lambda m: m.timestamp)
+        
+        return memories
+    
+    async def find_related(self, memory: MemoryItem, limit: int = 5) -> List[MemoryItem]:
+        """
+        Find memories related to a given memory
+        
+        This enables "memory chaining" - following associative links
+        
+        Args:
+            memory: Source memory
+            limit: Maximum related memories
+            
+        Returns:
+            Related memories
+        """
+        # Search L3 for semantically similar memories
+        related = await self.L3.find_similar(memory.id, limit=limit)
+        
+        # Also check L2/L4 for memories from same time period or module
+        config = RetrievalConfig(
+            strategy=RetrievalStrategy.COMPREHENSIVE,
+            max_results=limit
+        )
+        
+        # Search by source module if available
+        if memory.source_module:
+            module_memories = await self.retrieve(
+                memory.content,  # Use content as query
+                config=config
+            )
+            
+            # Combine and deduplicate
+            all_related = related + module_memories
+            unique_related = self._deduplicate(all_related)
+            
+            return unique_related[:limit]
+        
+        return related
+    
+    async def get_conversation_summary(self, hours: int = 24) -> List[MemoryItem]:
+        """
+        Get a summary of the last N hours of conversation
+        
+        This is useful for:
+        - Session recaps
+        - Context building
+        - Memory consolidation decisions
+        
+        Args:
+            hours: How many hours back
+            
+        Returns:
+            Important memories from time period
+        """
+        # Get conversation flow from L2
+        conversation = await self.L2.get_conversation_flow(hours)
+        
+        # Filter to high-importance memories
+        important = [m for m in conversation if m.importance > 0.6]
+        
+        return important
+    
+    async def search_by_type(self, memory_type: MemoryType, 
+                            limit: int = 50) -> List[MemoryItem]:
+        """
+        Search for memories of a specific type across all tiers
+        
+        Args:
+            memory_type: Type to search for
+            limit: Maximum results
+            
+        Returns:
+            Memories of specified type
+        """
+        config = RetrievalConfig(
+            strategy=RetrievalStrategy.COMPREHENSIVE,
+            max_results=limit
+        )
+        
+        # Search all tiers
+        tasks = [
+            self.L1.retrieve("*", limit=limit, 
+                           filters={'memory_type': memory_type.value}),
+            self.L2.retrieve("*", limit=limit,
+                           filters={'memory_type': memory_type.value}),
+            self.L3.get_by_type(memory_type, limit=limit),
+            self.L4.retrieve("*", limit=limit,
+                           filters={'memory_type': memory_type.value})
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        
+        # Merge and deduplicate
+        all_memories = []
+        for memories in results:
+            all_memories.extend(memories)
+        
+        unique = self._deduplicate(all_memories)
+        
+        # Sort by importance
+        unique.sort(key=lambda m: m.importance, reverse=True)
+        
+        return unique[:limit]
+    
+    # === Private Methods ===
+    
+    def _select_tiers(self, strategy: RetrievalStrategy) -> List[str]:
+        """Determine which tiers to search based on strategy"""
+        if strategy == RetrievalStrategy.RECENT_CONTEXT:
+            return ['L1']
+        elif strategy == RetrievalStrategy.TODAY_HISTORY:
+            return ['L1', 'L2']
+        elif strategy == RetrievalStrategy.SEMANTIC_SEARCH:
+            return ['L3', 'L4']
+        elif strategy == RetrievalStrategy.FACT_LOOKUP:
+            return ['L4']
+        else:  # COMPREHENSIVE
+            return ['L1', 'L2', 'L3', 'L4']
+    
+    async def _search_L1(self, query: str, config: RetrievalConfig) -> List[MemoryItem]:
+        """Search working memory"""
+        memories = await self.L1.retrieve(query, limit=config.max_results * 2)
+        
+        # Add tier metadata
+        for m in memories:
+            m.metadata['search_tier'] = 'L1'
+            m.metadata['tier_weight'] = config.weight_l1
+        
+        return memories
+    
+    async def _search_L2(self, query: str, config: RetrievalConfig) -> List[MemoryItem]:
+        """Search short-term memory"""
+        memories = await self.L2.retrieve(query, limit=config.max_results * 2)
+        
+        # Add tier metadata
+        for m in memories:
+            m.metadata['search_tier'] = 'L2'
+            m.metadata['tier_weight'] = config.weight_l2
+        
+        return memories
+    
+    async def _search_L3(self, query: str, config: RetrievalConfig) -> List[MemoryItem]:
+        """Search long-term memory"""
+        memories = await self.L3.retrieve(query, limit=config.max_results * 2)
+        
+        # Add tier metadata
+        for m in memories:
+            m.metadata['search_tier'] = 'L3'
+            m.metadata['tier_weight'] = config.weight_l3
+        
+        return memories
+    
+    async def _search_L4(self, query: str, config: RetrievalConfig) -> List[MemoryItem]:
+        """Search persistent memory"""
+        memories = await self.L4.retrieve(query, limit=config.max_results * 2)
+        
+        # Add tier metadata
+        for m in memories:
+            m.metadata['search_tier'] = 'L4'
+            m.metadata['tier_weight'] = config.weight_l4
+        
+        return memories
+    
+    def _deduplicate(self, memories: List[MemoryItem]) -> List[MemoryItem]:
+        """
+        Remove duplicate memories (same ID from different tiers)
+        
+        When duplicates exist, keep the one from the higher tier (L1 > L2 > L3 > L4)
+        since it's more recent
+        """
+        seen_ids = set()
+        unique = []
+        
+        # Process in tier priority order
+        tier_priority = {'L1': 1, 'L2': 2, 'L3': 3, 'L4': 4}
+        
+        # Sort by tier priority
+        sorted_memories = sorted(
+            memories,
+            key=lambda m: tier_priority.get(m.metadata.get('search_tier', 'L4'), 4)
+        )
+        
+        for memory in sorted_memories:
+            if memory.id not in seen_ids:
+                seen_ids.add(memory.id)
+                unique.append(memory)
+        
+        return unique
+    
+    def _rank_memories(self, memories: List[MemoryItem], query: str,
+                      config: RetrievalConfig) -> List[MemoryItem]:
+        """
+        Rank memories by composite relevance score
+        
+        Scoring factors:
+        1. Importance (0-1): Inherent importance of memory
+        2. Recency (0-1): How recent the memory is
+        3. Access patterns (0-1): How often it's been accessed
+        4. Tier weight (0-1): Which tier it came from
+        5. Semantic similarity (0-1): For L3 results
+        
+        Final score is weighted combination of all factors
+        """
+        current_time = time.time()
+        
+        for memory in memories:
+            # 1. Importance score (already 0-1)
+            importance_score = memory.importance
+            
+            # 2. Recency score (exponential decay)
+            age_hours = (current_time - memory.timestamp) / 3600
+            recency_score = 1.0 / (1.0 + age_hours / 24.0)  # Half-life 24 hours
+            
+            # 3. Access pattern score
+            access_score = min(memory.access_count / 10.0, 1.0)  # Cap at 10
+            
+            # 4. Tier weight (from metadata)
+            tier_weight = memory.metadata.get('tier_weight', 0.25)
+            
+            # 5. Semantic similarity (from L3 if available)
+            semantic_score = memory.metadata.get('semantic_distance', 0.5)
+            # Convert distance to similarity (lower distance = higher similarity)
+            semantic_score = 1.0 - min(semantic_score, 1.0)
+            
+            # Composite score
+            composite = (
+                importance_score * config.importance_weight +
+                recency_score * config.recency_weight +
+                access_score * config.access_weight +
+                semantic_score * config.semantic_weight
+            )
+            
+            # Apply tier weight as multiplier
+            composite *= (1.0 + tier_weight)
+            
+            # Store in metadata
+            memory.metadata['composite_score'] = composite
+            memory.metadata['score_breakdown'] = {
+                'importance': importance_score,
+                'recency': recency_score,
+                'access': access_score,
+                'semantic': semantic_score,
+                'tier_weight': tier_weight
+            }
+        
+        # Sort by composite score (highest first)
+        memories.sort(key=lambda m: m.metadata.get('composite_score', 0), reverse=True)
+        
+        return memories
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics for entire memory system
+        
+        Returns combined stats from all tiers
+        """
+        stats = await asyncio.gather(
+            self.L1.get_stats(),
+            self.L2.get_stats(),
+            self.L3.get_stats(),
+            self.L4.get_stats()
+        )
+        
+        total_memories = sum(s['count'] for s in stats)
+        
+        return {
+            'total_memories': total_memories,
+            'L1': stats[0],
+            'L2': stats[1],
+            'L3': stats[2],
+            'L4': stats[3],
+            'health': {
+                'L1': await self.L1.health_check(),
+                'L2': await self.L2.health_check(),
+                'L3': await self.L3.health_check(),
+                'L4': await self.L4.health_check()
+            }
+        }

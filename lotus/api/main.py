@@ -19,8 +19,20 @@ from ..lib.logging import get_logger
 logger = get_logger("lotus.api")
 
 
-# Global adapter instance
-adapter: LOTUSAdapter = None
+
+from .adapter import set_adapter  # Add this import
+
+# In the lifespan function, change:
+async def lifespan(app: FastAPI):
+    # Startup
+    config = Config("config/system.yaml")
+    adapter = LOTUSAdapter(config)
+    await adapter.initialize()
+    set_adapter(adapter)  # Use set_adapter() instead of global
+    yield
+    # Shutdown
+    logger.info("📴 Shutting down LOTUS API...")
+    logger.info("👋 LOTUS API shutdown complete")
 
 
 @asynccontextmanager

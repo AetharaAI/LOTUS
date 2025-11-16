@@ -1,0 +1,271 @@
+"""
+LOTUS Utility Functions
+
+Common helper functions used across the system
+"""
+
+import asyncio
+import hashlib
+import json
+import time
+import uuid
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Callable
+from pathlib import Path
+
+
+def generate_id(prefix: str = "") -> str:
+    """Generate a unique ID"""
+    unique = str(uuid.uuid4())
+    if prefix:
+        return f"{prefix}_{unique}"
+    return unique
+
+
+def hash_content(content: str) -> str:
+    """Generate hash of content"""
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def timestamp_now() -> float:
+    """Get current timestamp"""
+    return time.time()
+
+
+def timestamp_to_datetime(ts: float) -> datetime:
+    """Convert timestamp to datetime"""
+    return datetime.fromtimestamp(ts)
+
+
+def datetime_to_timestamp(dt: datetime) -> float:
+    """Convert datetime to timestamp"""
+    return dt.timestamp()
+
+
+def format_timestamp(ts: float, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """Format timestamp as string"""
+    return datetime.fromtimestamp(ts).strftime(format_str)
+
+
+async def retry_async(func: Callable, max_attempts: int = 3, 
+                     delay: float = 1.0, backoff: float = 2.0):
+    """
+    Retry an async function with exponential backoff
+    
+    Args:
+        func: Async function to retry
+        max_attempts: Maximum number of attempts
+        delay: Initial delay between retries (seconds)
+        backoff: Multiplier for delay after each retry
+        
+    Returns:
+        Result of successful function call
+        
+    Raises:
+        Last exception if all attempts fail
+    """
+    last_exception = None
+    current_delay = delay
+    
+    for attempt in range(max_attempts):
+        try:
+            return await func()
+        except Exception as e:
+            last_exception = e
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(current_delay)
+                current_delay *= backoff
+    
+    raise last_exception
+
+
+def chunk_text(text: str, max_length: int = 1000, overlap: int = 100) -> List[str]:
+    """
+    Split text into overlapping chunks
+    
+    Useful for processing long documents
+    """
+    chunks = []
+    start = 0
+    
+    while start < len(text):
+        end = start + max_length
+        chunk = text[start:end]
+        chunks.append(chunk)
+        start = end - overlap
+    
+    return chunks
+
+
+def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
+    """Truncate text to maximum length"""
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - len(suffix)] + suffix
+
+
+def parse_json_safely(json_str: str, default: Any = None) -> Any:
+    """Parse JSON string, return default if invalid"""
+    try:
+        return json.loads(json_str)
+    except (json.JSONDecodeError, TypeError):
+        return default
+
+
+def merge_dicts(dict1: Dict, dict2: Dict, deep: bool = True) -> Dict:
+    """
+    Merge two dictionaries
+    
+    If deep=True, recursively merge nested dicts
+    """
+    if not deep:
+        return {**dict1, **dict2}
+    
+    result = dict1.copy()
+    
+    for key, value in dict2.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = merge_dicts(result[key], value, deep=True)
+        else:
+            result[key] = value
+    
+    return result
+
+
+def get_memory_usage() -> float:
+    """Get current process memory usage in MB"""
+    try:
+        import psutil
+        import os
+        process = psutil.Process(os.getpid())
+        return process.memory_info().rss / 1024 / 1024
+    except ImportError:
+        return 0.0
+
+
+def ensure_dir(path: Path) -> Path:
+    """Ensure directory exists, create if not"""
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def read_file_safe(path: Path, default: str = "") -> str:
+    """Read file, return default if error"""
+    try:
+        return Path(path).read_text()
+    except Exception:
+        return default
+
+
+def write_file_safe(path: Path, content: str) -> bool:
+    """Write file, return success status"""
+    try:
+        Path(path).write_text(content)
+        return True
+    except Exception:
+        return False
+
+
+async def run_with_timeout(coro, timeout: float):
+    """Run coroutine with timeout"""
+    try:
+        return await asyncio.wait_for(coro, timeout=timeout)
+    except asyncio.TimeoutError:
+        raise TimeoutError(f"Operation timed out after {timeout} seconds")
+
+
+class RateLimiter:
+    """Simple rate limiter"""
+    
+    def __init__(self, max_calls: int, time_window: float):
+        """
+        Args:
+            max_calls: Maximum number of calls allowed
+            time_window: Time window in seconds
+        """
+        self.max_calls = max_calls
+        self.time_window = time_window
+        self.calls: List[float] = []
+    
+    async def acquire(self):
+        """Wait until rate limit allows"""
+        now = time.time()
+        
+        # Remove old calls outside time window
+        self.calls = [t for t in self.calls if now - t < self.time_window]
+        
+        # If at limit, wait
+        if len(self.calls) >= self.max_calls:
+            wait_time = self.time_window - (now - self.calls[0])
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
+                return await self.acquire()
+        
+        # Record this call
+        self.calls.append(now)
+
+
+class AsyncCache:
+    """Simple async cache with TTL"""
+    
+    def __init__(self, ttl: float = 300):
+        """
+        Args:
+            ttl: Time to live in seconds
+        """
+        self.ttl = ttl
+        self.cache: Dict[str, tuple] = {}  # key -> (value, timestamp)
+    
+    def get(self, key: str) -> Optional[Any]:
+        """Get value from cache"""
+        if key not in self.cache:
+            return None
+        
+        value, timestamp = self.cache[key]
+        
+        # Check if expired
+        if time.time() - timestamp > self.ttl:
+            del self.cache[key]
+            return None
+        
+        return value
+    
+    def set(self, key: str, value: Any):
+        """Set value in cache"""
+        self.cache[key] = (value, time.time())
+    
+    def clear(self):
+        """Clear all cache"""
+        self.cache.clear()
+    
+    def cleanup(self):
+        """Remove expired entries"""
+        now = time.time()
+        expired = [
+            k for k, (_, ts) in self.cache.items()
+            if now - ts > self.ttl
+        ]
+        for k in expired:
+            del self.cache[k]
+
+
+def format_bytes(bytes: int) -> str:
+    """Format bytes as human-readable string"""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes < 1024.0:
+            return f"{bytes:.1f} {unit}"
+        bytes /= 1024.0
+    return f"{bytes:.1f} PB"
+
+
+def format_duration(seconds: float) -> str:
+    """Format duration as human-readable string"""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        minutes = seconds / 60
+        return f"{minutes:.1f}m"
+    else:
+        hours = seconds / 3600
+        return f"{hours:.1f}h"

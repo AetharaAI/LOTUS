@@ -1,0 +1,432 @@
+"""
+LOTUS Memory System - L2: Short-term Memory
+
+Redis Streams-backed short-term memory for recent history (last 24 hours).
+This is the "recent memory" of LOTUS - what happened today.
+
+Characteristics:
+- TTL: 24 hours (configurable)
+- Storage: Redis Streams (append-only log)
+- Capacity: ~1000 items
+- Search: Time-range + keyword
+- Use case: Recent conversation history, today's activities
+
+Redis Streams provide:
+- Ordered, append-only log
+- Time-based queries
+- Consumer groups (for multi-consumer scenarios)
+- Persistence across restarts
+"""
+
+import json
+import time
+from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta
+import redis.asyncio as redis
+import logging # Import logging to use self.logger
+
+from .base import MemoryTier, MemoryItem, MemoryType
+
+
+class ShortTermMemory(MemoryTier):
+    """
+    L2: Short-term Memory - Recent history (last 24 hours)
+    
+    Stores conversation flow and recent activities in an ordered stream.
+    Think of this as "what happened today" - the running log of LOTUS's day.
+    
+    Storage:
+    - Redis Stream: `lotus:memory:L2:stream`
+    - Entry format: {memory_id: data, timestamp: ts, ...}
+    - TTL: Messages older than 24 hours are pruned automatically
+    
+    Short-term memories that prove important (accessed multiple times,
+    high importance) get promoted to L3 (Long-term) by consolidation.
+    """
+    
+    def __init__(self, redis_client: redis.Redis, 
+                 ttl_hours: int = 24, max_items: int = 1000):
+        """
+        Initialize Short-term Memory
+        
+        Args:
+            redis_client: Async Redis client
+            ttl_hours: Hours to keep memories (default: 24)
+            max_items: Maximum stream entries
+        """
+        super().__init__("short_term_memory", tier_level=2, ttl=ttl_hours * 3600)
+        self.redis = redis_client
+        self.max_items = max_items
+        self.ttl_hours = ttl_hours
+        
+        # Stream configuration
+        self.stream_key = "lotus:memory:L2:stream"
+        self.index_key = "lotus:memory:L2:index"  # For fast lookups (memory_id -> stream_id)
+        self.access_prefix = f"{self.index_key}:access:" # For access counts
+        self.logger = logging.getLogger(f"lotus.memory.{self.tier_name}") # Dedicated logger
+    
+    async def store(self, memory: MemoryItem) -> str:
+        """
+        Store memory in L2 (Short-term Memory)
+        
+        Process:
+        1. Add to Redis Stream (append-only)
+        2. Update index for fast lookup
+        3. Trim old entries beyond TTL (managed by XADD MAXLEN)
+        4. Prune old entries (explicitly by timestamp)
+        """
+        try:
+            memory.source_tier = "L2"
+            
+            entry_data = {
+                "memory_id": memory.id,
+                "content": memory.content,
+                "memory_type": memory.memory_type.value,
+                "timestamp": str(memory.timestamp), # Store as string for Redis
+                "importance": str(memory.importance),
+                "metadata": json.dumps(memory.metadata),
+                "access_count": str(memory.access_count),
+                "last_accessed": str(memory.last_accessed) if memory.last_accessed else "",
+                "source_module": memory.source_module or ""
+            }
+            
+            stream_id = await self.redis.xadd(self.stream_key, entry_data, maxlen=self.max_items, approximate=True)
+            await self.redis.hset(self.index_key, memory.id, stream_id.decode('utf-8')) # Store stream ID as string
+            
+            # Prune old entries (older than TTL)
+            await self._prune_old_entries()
+            self.logger.debug(f"Stored memory {memory.id[:15]}... in L2 with stream_id {stream_id.decode('utf-8')[:10]}...")
+            return memory.id
+        except Exception as e:
+            self.logger.exception(f"Error storing memory {memory.id[:15]}... in L2.")
+            raise
+    
+    async def retrieve(self, query: str, limit: int = 10,
+                      filters: Optional[Dict] = None) -> List[MemoryItem]:
+        """
+        Retrieve memories from short-term memory
+        
+        Search method:
+        - Time-range queries (last N hours)
+        - Keyword search in content
+        - Filter by memory type, importance
+        
+        Returns memories in reverse chronological order (newest first)
+        """
+        self.logger.debug(f"Retrieving from L2 with query: {query[:50]}..., limit: {limit}, filters: {filters}")
+        memories = []
+        
+        try:
+            # Determine time range for xrevrange (start from newest, go back)
+            # Redis XREVRANGE uses min/max ID, not direct timestamps.
+            # To simulate time range, we retrieve recent entries and then filter.
+            
+            min_timestamp_cutoff = time.time() - self.ttl # Default TTL
+            if filters and 'time_range_hours' in filters:
+                hours = filters['time_range_hours']
+                min_timestamp_cutoff = time.time() - (hours * 3600)
+            
+            # Read from stream (most recent first)
+            entries = await self.redis.xrevrange(self.stream_key, count=self.max_items)
+            
+            for stream_id, entry_data_bytes in entries:
+                # Redis returns bytes, decode them
+                entry_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in entry_data_bytes.items()}
+                memory = self._parse_stream_entry(entry_data)
+                
+                if not memory:
+                    continue
+                
+                # Apply time range filter
+                if memory.timestamp < min_timestamp_cutoff:
+                    # Since entries are reverse chronological, we can stop early
+                    break 
+                
+                # Apply filters
+                if filters:
+                    if 'memory_type' in filters and memory.memory_type.value != filters['memory_type']: continue
+                    if 'min_importance' in filters and memory.importance < filters['min_importance']: continue
+                
+                # Apply keyword search
+                if query and query != "*":
+                    query_lower = query.lower()
+                    if query_lower not in memory.content.lower():
+                        continue
+                
+                # Mark as accessed
+                memory.mark_accessed()
+                await self._update_access_count_and_timestamp(memory.id, memory.access_count, memory.last_accessed)
+                
+                memories.append(memory)
+                
+                if len(memories) >= limit:
+                    break
+            
+            self.logger.debug(f"Successfully retrieved {len(memories)} memories from L2.")
+            return memories
+        except Exception as e:
+            self.logger.exception(f"Error retrieving from L2 with query: {query[:50]}...")
+            return [] # Return empty list on error
+    
+    async def delete(self, memory_id: str) -> bool:
+        """
+        Delete a specific memory from short-term memory
+        
+        Note: Redis Streams are append-only. To 'delete', we use XDEL to remove
+        the stream entry and also remove from our index.
+        """
+        self.logger.debug(f"Attempting to delete memory {memory_id[:15]}... from L2.")
+        try:
+            stream_id = await self.redis.hget(self.index_key, memory_id)
+            
+            if not stream_id:
+                self.logger.debug(f"Memory {memory_id[:15]}... not found in L2 index for deletion.")
+                return False
+            
+            deleted_count = await self.redis.xdel(self.stream_key, stream_id.decode('utf-8')) # XDEL takes string stream ID
+            await self.redis.hdel(self.index_key, memory_id)
+            await self.redis.delete(f"{self.access_prefix}{memory_id}") # Delete access count
+            
+            self.logger.debug(f"Deleted memory {memory_id[:15]}... from L2. Status: {deleted_count > 0}")
+            return deleted_count > 0
+        except Exception as e:
+            self.logger.exception(f"Error deleting memory {memory_id[:15]}... from L2.")
+            return False
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get short-term memory statistics"""
+        self.logger.debug("Getting L2 statistics.")
+        try:
+            stream_info = await self.redis.xinfo_stream(self.stream_key, full=False)
+            
+            count = stream_info.get('length', 0)
+            
+            oldest_timestamp = None
+            newest_timestamp = None
+            avg_importance = 0.0
+            memory_types = {}
+            
+            if count > 0:
+                # Get oldest and newest entries (IDs are timestamps in Redis Streams, first part before '-')
+                oldest_id = stream_info.get('first-entry-id', b'0-0').decode('utf-8')
+                newest_id = stream_info.get('last-entry-id', b'0-0').decode('utf-8')
+                
+                oldest_timestamp = int(oldest_id.split('-')[0]) / 1000 # Convert ms to s
+                newest_timestamp = int(newest_id.split('-')[0]) / 1000 # Convert ms to s
+
+                # Sample entries for importance and type distribution
+                entries = await self.redis.xrevrange(self.stream_key, count=min(count, 100))
+                total_importance = 0.0
+                for _, entry_data_bytes in entries:
+                    entry_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in entry_data_bytes.items()}
+                    memory = self._parse_stream_entry(entry_data)
+                    if memory:
+                        total_importance += memory.importance
+                        mem_type = memory.memory_type.value
+                        memory_types[mem_type] = memory_types.get(mem_type, 0) + 1
+                avg_importance = total_importance / len(entries) if entries else 0.0
+            
+            stats = {
+                "tier": "L2_short_term",
+                "count": count,
+                "max_capacity": self.max_items,
+                "utilization": count / self.max_items if self.max_items > 0 else 0,
+                "avg_importance": avg_importance,
+                "oldest_timestamp": oldest_timestamp,
+                "newest_timestamp": newest_timestamp,
+                "age_hours": (time.time() - (oldest_timestamp or time.time())) / 3600, # handle None
+                "memory_types": memory_types,
+                "ttl_hours": self.ttl_hours
+            }
+            self.logger.debug("L2 statistics generated.")
+            return stats
+        except redis.ResponseError as re:
+            # Stream might not exist yet if no memories stored
+            self.logger.warning(f"L2 stream '{self.stream_key}' does not exist or Redis error during stats: {re}")
+            return {"tier": "L2_short_term", "error": str(re), "count": 0}
+        except Exception as e:
+            self.logger.exception("Error getting L2 statistics.")
+            return {"tier": "L2_short_term", "error": str(e), "count": 0}
+    
+    async def get_time_range(self, start_time: float, end_time: float) -> List[MemoryItem]:
+        """
+        Get all memories within a specific time range
+        
+        Args:
+            start_time: Start timestamp (epoch seconds)
+            end_time: End timestamp (epoch seconds)
+            
+        Returns:
+            List of memories in time range, sorted chronologically
+        """
+        self.logger.debug(f"Getting L2 memories in time range: {start_time} to {end_time}.")
+        memories = []
+        try:
+            # Redis xrange requires min/max ID. We can approximate with timestamps
+            # Convert epoch seconds to Redis stream IDs (milliseconds)
+            start_id = f"{int(start_time * 1000)}-0"
+            end_id = f"{int(end_time * 1000)}-max" # Use -max to ensure all events for that ms are included
+            
+            entries = await self.redis.xrange(self.stream_key, min=start_id, max=end_id)
+            
+            for _, entry_data_bytes in entries:
+                entry_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in entry_data_bytes.items()}
+                memory = self._parse_stream_entry(entry_data)
+                if memory:
+                    memories.append(memory)
+            
+            memories.sort(key=lambda m: m.timestamp) # Ensure chronological
+            self.logger.debug(f"Retrieved {len(memories)} memories from L2 in specified time range.")
+            return memories
+        except Exception as e:
+            self.logger.exception(f"Error getting L2 memories in time range {start_time}-{end_time}.")
+            return []
+    
+    async def get_conversation_flow(self, hours: int = 24) -> List[MemoryItem]:
+        """
+        Get conversation flow for the last N hours
+        
+        This reconstructs the sequence of interactions
+        
+        Args:
+            hours: How many hours back to look
+            
+        Returns:
+            Ordered list of episodic memories
+        """
+        self.logger.debug(f"Getting L2 conversation flow for last {hours} hours.")
+        try:
+            cutoff_time = time.time() - (hours * 3600)
+            
+            # Use retrieve with time filter and then filter for episodic
+            memories = await self.retrieve("*", limit=self.max_items, filters={'time_range_hours': hours})
+            
+            episodic = [m for m in memories if m.memory_type == MemoryType.EPISODIC]
+            episodic.sort(key=lambda m: m.timestamp) # Oldest first for conversation flow
+            
+            self.logger.debug(f"Retrieved {len(episodic)} episodic memories for conversation flow from L2.")
+            return episodic
+        except Exception as e:
+            self.logger.exception(f"Error getting L2 conversation flow for {hours} hours.")
+            return []
+    
+    async def retrieve_recent(self, count: int = 10) -> List[MemoryItem]:
+        """
+        Retrieve the N most recent memories from the stream directly.
+        Used by MemoryModule.get_recent for compatibility.
+        """
+        self.logger.debug(f"Retrieving {count} most recent memories from L2 stream.")
+        memories = []
+        try:
+            entries = await self.redis.xrevrange(self.stream_key, count=count)
+            for _, entry_data_bytes in entries:
+                entry_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in entry_data_bytes.items()}
+                memory = self._parse_stream_entry(entry_data)
+                if memory:
+                    memories.append(memory)
+            self.logger.debug(f"Retrieved {len(memories)} recent memories directly from L2 stream.")
+            return memories
+        except Exception as e:
+            self.logger.exception(f"Error retrieving recent memories directly from L2 stream.")
+            return []
+
+    async def _parse_stream_entry(self, entry_data: Dict[str, Any]) -> Optional[MemoryItem]:
+        """Parse Redis Stream entry into MemoryItem"""
+        try:
+            # Redis stream data is always bytes, decode it first
+            # The entry_data received here is already decoded in retrieve methods,
+            # but for direct calls, ensure it's handled.
+            # This check is now redundant if the caller already decodes bytes
+            # if any(isinstance(v, bytes) for v in entry_data.values()): # Check if still bytes
+            #     entry_data = {k.decode('utf-8') if isinstance(k, bytes) else k: 
+            #                   v.decode('utf-8') if isinstance(v, bytes) else v 
+            #                   for k, v in entry_data.items()}
+
+            metadata = json.loads(entry_data.get('metadata', '{}'))
+            # Access count and last accessed are stored as strings in Redis, convert back to int/float
+            access_count = int(entry_data.get('access_count', 0))
+            last_accessed_str = entry_data.get('last_accessed', '')
+            last_accessed = float(last_accessed_str) if last_accessed_str else None
+
+            return MemoryItem(
+                content=entry_data.get('content', ''),
+                memory_type=MemoryType(entry_data.get('memory_type', 'episodic')),
+                timestamp=float(entry_data.get('timestamp', 0)),
+                importance=float(entry_data.get('importance', 0.5)),
+                metadata=metadata,
+                access_count=access_count,
+                last_accessed=last_accessed,
+                id=entry_data.get('memory_id', ''),
+                source_module=entry_data.get('source_module') or None,
+                source_tier="L2"
+            )
+        except Exception as e:
+            self.logger.error(f"Error parsing L2 stream entry: {e}. Data: {entry_data}", exc_info=True)
+            return None
+    
+    async def _update_access_count_and_timestamp(self, memory_id: str, new_access_count: int, new_last_accessed: float) -> None:
+        """
+        Update access count and last accessed timestamp for a memory.
+        This attempts to modify the in-stream data, which is tricky for streams.
+        For now, we will store access counts separately in a hash or string.
+        """
+        try:
+            # Store access count and last_accessed in a separate Redis hash/string for easy updates
+            access_key = f"{self.access_prefix}{memory_id}"
+            await self.redis.hset(access_key, mapping={
+                "access_count": new_access_count,
+                "last_accessed": new_last_accessed
+            })
+            await self.redis.expire(access_key, self.ttl) # Expire with the stream data
+            self.logger.debug(f"Updated access for {memory_id[:15]}... in L2 access store.")
+        except Exception as e:
+            self.logger.exception(f"Error updating access for memory {memory_id[:15]}... in L2.")
+            # Don't re-raise, this is a background update
+
+    async def _prune_old_entries(self) -> int:
+        """
+        Prune entries older than TTL.
+        Redis Streams MAXLEN handles trimming by count. For TTL, we can either
+        rely on a consolidation process or a separate cleanup mechanism.
+        This implementation tries to delete by scanning if entries are very old.
+        """
+        self.logger.debug("Running L2 explicit pruning for old entries.")
+        cutoff_time = time.time() - self.ttl
+        
+        # We can't easily delete by timestamp in streams directly without scanning.
+        # XTRIM BY MINID could work if IDs were strictly epoch-ms, but they are not (seq numbers).
+        # For simplicity, and since consolidation handles promotion, we can let MAXLEN manage.
+        # If strict TTL is needed for old, non-important entries, a background scan with XDEL on older IDs is needed.
+        # For now, we'll log that this is a placeholder/approximate pruning.
+        self.logger.debug("L2 explicit pruning is approximated by MAXLEN. Consider more robust TTL pruning if memory growth is an issue.")
+        return 0 # No explicit count of pruned items via this method
+    
+    async def health_check(self) -> bool:
+        """Check if Redis Streams are accessible"""
+        try:
+            await self.redis.ping()
+            # Try to get stream info. If stream doesn't exist, it's not an error for health check.
+            try:
+                await self.redis.xinfo_stream(self.stream_key, full=False)
+            except redis.ResponseError as e:
+                if "no such key" in str(e).lower():
+                    self.logger.debug(f"L2 health check: Stream '{self.stream_key}' does not exist yet (normal on fresh start).")
+                else:
+                    raise # Re-raise if it's another Redis error
+            self.is_healthy = True
+            self.logger.debug("L2 health check successful.")
+            return True
+        except Exception as e:
+            self.is_healthy = False
+            self.logger.error(f"L2 health check failed: {e}", exc_info=True)
+            return False
+    
+    def should_store_in_tier(self, memory: MemoryItem) -> bool:
+        """
+        Short-term memory stores memories that:
+        - Are less than `self.ttl_hours` hours old
+        - Have importance > 0.3 (filter out trivial stuff)
+        """
+        age_hours = (time.time() - memory.timestamp) / 3600
+        # Use configured TTL hours
+        return age_hours < self.ttl_hours and memory.importance > 0.3

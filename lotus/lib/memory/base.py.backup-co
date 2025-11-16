@@ -1,0 +1,309 @@
+"""
+LOTUS Memory System - Base Memory Tier
+
+Abstract base class for all memory tiers (L1-L4).
+Defines the interface and common functionality that all memory tiers must implement.
+
+Memory Tier Hierarchy:
+- L1 (Working): Last 10 minutes, instant Redis access
+- L2 (Short-term): Last 24 hours, Redis Streams
+- L3 (Long-term): Semantic memories, ChromaDB vectors
+- L4 (Persistent): Permanent facts, PostgreSQL
+
+Each tier handles:
+- Storage in its specific backend
+- Retrieval with tier-specific logic
+- Metadata management
+- Health monitoring
+"""
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+from enum import Enum
+import time
+
+
+class MemoryType(Enum):
+    """Types of memories"""
+    EPISODIC = "episodic"        # Specific events/interactions
+    SEMANTIC = "semantic"        # General knowledge/facts
+    PROCEDURAL = "procedural"    # Skills and patterns
+    WORKING = "working"          # Immediate context
+
+
+@dataclass
+class MemoryItem:
+    """
+    Represents a single memory across all tiers
+    
+    This is the universal memory format used throughout LOTUS.
+    Each tier may add tier-specific metadata, but all share this core structure.
+    """
+    content: str                      # The actual memory content
+    memory_type: MemoryType          # Type of memory
+    timestamp: float                 # When it was created
+    importance: float = 0.5          # 0.0-1.0, determines tier placement
+    
+    # Metadata
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Access tracking
+    access_count: int = 0
+    last_accessed: Optional[float] = None
+    
+    # Memory ID (unique across all tiers)
+    id: Optional[str] = None
+    
+    # Source tracking
+    source_module: Optional[str] = None
+    source_tier: Optional[str] = None
+    
+    def __post_init__(self):
+        """Generate ID if not provided"""
+        if self.id is None:
+            self.id = f"{self.memory_type.value}:{int(self.timestamp * 1000000)}"
+        
+        if isinstance(self.memory_type, str):
+            self.memory_type = MemoryType(self.memory_type)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization"""
+        return {
+            "content": self.content,
+            "memory_type": self.memory_type.value,
+            "timestamp": self.timestamp,
+            "importance": self.importance,
+            "metadata": self.metadata,
+            "access_count": self.access_count,
+            "last_accessed": self.last_accessed,
+            "id": self.id,
+            "source_module": self.source_module,
+            "source_tier": self.source_tier
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MemoryItem':
+        """Create from dictionary"""
+        return cls(
+            content=data["content"],
+            memory_type=MemoryType(data["memory_type"]),
+            timestamp=data["timestamp"],
+            importance=data.get("importance", 0.5),
+            metadata=data.get("metadata", {}),
+            access_count=data.get("access_count", 0),
+            last_accessed=data.get("last_accessed"),
+            id=data.get("id"),
+            source_module=data.get("source_module"),
+            source_tier=data.get("source_tier")
+        )
+    
+    def mark_accessed(self) -> None:
+        """Update access tracking"""
+        self.access_count += 1
+        self.last_accessed = time.time()
+    
+    def calculate_relevance(self, query: str, current_time: float = None) -> float:
+        """
+        Calculate relevance score for retrieval ranking
+        
+        Factors:
+        - Content similarity (handled by tier-specific search)
+        - Recency (exponential decay)
+        - Importance (baseline weight)
+        - Access frequency (reinforcement learning)
+        
+        Returns: 0.0-1.0 relevance score
+        """
+        if current_time is None:
+            current_time = time.time()
+        
+        # Recency score (exponential decay)
+        age_hours = (current_time - self.timestamp) / 3600
+        recency_score = 1.0 / (1.0 + age_hours / 24.0)  # Half-life of 24 hours
+        
+        # Access frequency score
+        frequency_score = min(self.access_count / 10.0, 1.0)  # Cap at 10 accesses
+        
+        # Combined score
+        relevance = (
+            self.importance * 0.4 +        # Base importance
+            recency_score * 0.4 +          # How recent
+            frequency_score * 0.2          # How often accessed
+        )
+        
+        return min(relevance, 1.0)
+
+
+class MemoryTier(ABC):
+    """
+    Abstract base class for all memory tiers
+    
+    Each tier (L1-L4) inherits from this and implements:
+    - store(): How to save memories in this tier
+    - retrieve(): How to search/recall from this tier
+    - delete(): How to remove memories
+    - get_stats(): Tier-specific statistics
+    
+    Common functionality provided:
+    - Health monitoring
+    - Metadata management
+    - Access tracking
+    """
+    
+    def __init__(self, tier_name: str, tier_level: int, ttl: Optional[int] = None):
+        """
+        Initialize memory tier
+        
+        Args:
+            tier_name: Human-readable name (e.g., "working_memory")
+            tier_level: L1, L2, L3, or L4
+            ttl: Optional time-to-live in seconds (None = no expiry)
+        """
+        self.tier_name = tier_name
+        self.tier_level = tier_level
+        self.ttl = ttl
+        self.is_healthy = True
+        self._last_health_check = time.time()
+    
+    @abstractmethod
+    async def store(self, memory: MemoryItem) -> str:
+        """
+        Store a memory in this tier
+        
+        Args:
+            memory: MemoryItem to store
+            
+        Returns:
+            Memory ID
+            
+        Each tier implements its own storage logic:
+        - L1: Store in Redis with TTL
+        - L2: Append to Redis Stream
+        - L3: Generate embedding and store in ChromaDB
+        - L4: Insert into PostgreSQL
+        """
+        pass
+    
+    @abstractmethod
+    async def retrieve(self, query: str, limit: int = 10, 
+                      filters: Optional[Dict] = None) -> List[MemoryItem]:
+        """
+        Retrieve memories from this tier
+        
+        Args:
+            query: Search query
+            limit: Maximum memories to return
+            filters: Optional filters (type, importance range, etc.)
+            
+        Returns:
+            List of matching MemoryItem objects
+            
+        Each tier implements its own retrieval:
+        - L1: Keyword search in Redis
+        - L2: Stream range query
+        - L3: Vector similarity search
+        - L4: SQL query with full-text search
+        """
+        pass
+    
+    @abstractmethod
+    async def delete(self, memory_id: str) -> bool:
+        """
+        Delete a memory from this tier
+        
+        Args:
+            memory_id: ID of memory to delete
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+    
+    @abstractmethod
+    async def get_stats(self) -> Dict[str, Any]:
+        """
+        Get tier-specific statistics
+        
+        Returns:
+            Dict with stats like:
+            - count: Number of memories
+            - oldest: Timestamp of oldest memory
+            - newest: Timestamp of newest memory
+            - avg_importance: Average importance
+            - storage_size: Bytes used
+        """
+        pass
+    
+    async def health_check(self) -> bool:
+        """
+        Check if tier is healthy
+        
+        Returns:
+            True if healthy, False otherwise
+        """
+        self._last_health_check = time.time()
+        # Subclasses can override to add specific checks
+        return self.is_healthy
+    
+    def should_store_in_tier(self, memory: MemoryItem) -> bool:
+        """
+        Determine if a memory should be stored in this tier
+        
+        Based on:
+        - Memory importance
+        - Memory age
+        - Tier policy
+        
+        Returns:
+            True if memory belongs in this tier
+        """
+        # Override in subclasses for tier-specific logic
+        return True
+    
+    async def consolidate_to_next_tier(self, next_tier: 'MemoryTier', 
+                                       importance_threshold: float = 0.5) -> int:
+        """
+        Consolidate memories to the next tier
+        
+        This is called by the consolidation process to move memories
+        from short-term tiers to long-term tiers.
+        
+        Args:
+            next_tier: The tier to move memories to
+            importance_threshold: Minimum importance to promote
+            
+        Returns:
+            Number of memories consolidated
+        """
+        # Get all memories from this tier
+        memories = await self.retrieve("*", limit=1000)
+        
+        consolidated_count = 0
+        current_time = time.time()
+        
+        for memory in memories:
+            # Check if memory should be promoted
+            age_hours = (current_time - memory.timestamp) / 3600
+            
+            # Criteria for promotion:
+            # 1. Importance above threshold
+            # 2. Accessed more than once
+            # 3. Not too old (within tier TTL if set)
+            
+            should_promote = (
+                memory.importance >= importance_threshold or
+                memory.access_count > 1 or
+                (self.ttl and age_hours < (self.ttl / 3600))
+            )
+            
+            if should_promote:
+                # Store in next tier
+                await next_tier.store(memory)
+                consolidated_count += 1
+        
+        return consolidated_count
+    
+    def __repr__(self) -> str:
+        return f"<MemoryTier L{self.tier_level}: {self.tier_name}, TTL={self.ttl}>"

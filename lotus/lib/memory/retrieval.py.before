@@ -1,0 +1,583 @@
+"""
+LOTUS Memory Module - Coordinator for 4-Tier Memory System
+
+This module manages the complete memory architecture and exposes
+it via the event bus for other modules to use.
+"""
+import logging
+import asyncio
+import time
+import json
+from typing import Dict, List, Any, Optional
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+
+from lib.module import BaseModule
+from lib.decorators import on_event, tool, periodic
+from lib.memory import (
+    MemoryItem, MemoryType,
+    WorkingMemory, ShortTermMemory, LongTermMemory, PersistentMemory,
+    MemoryRetrieval, RetrievalConfig, RetrievalStrategy
+)
+# Attempt to import SentenceTransformer from a known path,
+# potentially from the original lib/memory.py or if it's placed in lib/
+# Fallback to a dummy if not available or if the full library isn't installed.
+try:
+    from sentence_transformers import SentenceTransformer
+    _SENTENCE_TRANSFORMER_AVAILABLE = True
+except ImportError:
+    # Handle cases where sentence_transformers might not be installed
+    # or its dependencies (like torch) are missing.
+    _SENTENCE_TRANSFORMER_AVAILABLE = False
+    class SentenceTransformer: # Dummy class
+        def __init__(self, model_name: str):
+            pass
+        def encode(self, text: str):
+            return [0.0] # Dummy embedding
+
+class MemoryModule(BaseModule):
+    """
+    Memory System Coordinator
+    
+    Manages all 4 tiers and provides memory services to other modules
+    """
+    
+    async def initialize(self) -> None:
+        """Initialize all memory tiers"""
+        self.logger.info("Initializing 4-tier memory system")
+        
+        # Get connections from nucleus
+        redis_client = self.config.get("services.redis")
+        chroma_client = self.config.get("services.chroma")
+        postgres_conn = self.config.get("services.db_engine")
+
+        if not redis_client:
+            self.logger.critical("Redis client not found in config. Memory system cannot initialize.")
+            raise RuntimeError("Redis client not available.")
+        if not postgres_conn:
+            self.logger.critical("PostgreSQL engine not found in config. Memory system cannot initialize.")
+            raise RuntimeError("PostgreSQL engine not available.")
+        
+        # Initialize L1: Working Memory (Redis)
+        self.L1 = WorkingMemory(
+            redis_client,
+            ttl_seconds=self.config.get("memory.working_memory.ttl_seconds", 600),
+            max_items=self.config.get("memory.working_memory.max_items", 100)
+        )
+        self.logger.debug("L1 WorkingMemory initialized.")
+        
+        # Initialize L2: Short-term Memory (Redis Streams)
+        self.L2 = ShortTermMemory(
+            redis_client,
+            ttl_hours=self.config.get("memory.short_term.ttl_hours", 24),
+            max_items=self.config.get("memory.short_term.max_items", 1000)
+        )
+        self.logger.debug("L2 ShortTermMemory initialized.")
+        
+        # Initialize L3: Long-term Memory (ChromaDB)
+        # Handle SentenceTransformer initialization more gracefully
+        embedding_model_name = self.config.get("memory.long_term.embedding_model", "all-MiniLM-L6-v2")
+        if not _SENTENCE_TRANSFORMER_AVAILABLE:
+            self.logger.warning("SentenceTransformer library not available. L3 LongTermMemory will be in no-op mode if Chroma is enabled.")
+            embedding_model_name = None # No model available for embedding
+        elif not embedding_model_name:
+             self.logger.warning("No embedding model name provided in config for L3. L3 functionality may be limited if Chroma is enabled.")
+             embedding_model_name = None
+        else:
+            self.logger.debug(f"Attempting to prepare embedding model for L3: {embedding_model_name}")
+
+        if chroma_client is None:
+            self.logger.info("ChromaDB client is None. L3 LongTermMemory will be a No-Op shim.")
+            class NoOpLongTermMemory:
+                def __init__(self, *args, **kwargs):
+                    self.collection = None
+                    self.tier_name = "long_term_memory"
+                    self.tier_level = 3
+                    self.logger = logging.getLogger(f"lotus.memory.long_term_memory_noop")
+
+
+                async def initialize(self): return
+                async def store(self, *args, **kwargs):
+                    self.logger.debug(f"No-op L3 store called for {args[0].id[:15]}...")
+                    return None
+                async def retrieve(self, query: str, limit: int = 10, filters: Optional[Dict] = None):
+                    self.logger.debug(f"No-op L3 retrieve called for query: {query[:50]}...")
+                    return []
+                async def find_similar(self, *args, **kwargs): return []
+                async def get_important_memories(self, *args, **kwargs): return []
+                async def get_by_type(self, *args, **kwargs): return []
+                async def delete(self, memory_id: str) -> bool: return False
+                async def get_stats(self) -> Dict[str, Any]: return {"tier": "L3_long_term_noop", "count": 0}
+                async def health_check(self) -> bool: return True
+                def should_store_in_tier(self, *_args, **_kwargs): return False
+
+            self.L3 = NoOpLongTermMemory()
+        else:
+            # CORRECTED: LongTermMemory expects embedding_model string, not an embedder object
+            self.logger.debug("ChromaDB client found. Initializing L3 LongTermMemory with actual client.")
+            try:
+                self.L3 = LongTermMemory(
+                    chroma_client,
+                    collection_name=self.config.get("memory.long_term.collection_name", "lotus_memories"),
+                    embedding_model=embedding_model_name # Pass the model name string
+                )
+                self.logger.debug("L3 LongTermMemory (ChromaDB) initialized.")
+            except Exception as e:
+                self.logger.critical(f"Failed to initialize L3 LongTermMemory (ChromaDB): {e}. L3 will be a No-Op shim.", exc_info=True)
+                # Fallback to NoOp if actual L3 initialization fails
+                class NoOpLongTermMemory:
+                    def __init__(self, *args, **kwargs):
+                        self.collection = None
+                        self.tier_name = "long_term_memory"
+                        self.tier_level = 3
+                        self.logger = logging.getLogger(f"lotus.memory.long_term_memory_noop")
+
+                    async def initialize(self): return
+                    async def store(self, *args, **kwargs):
+                        self.logger.debug(f"No-op L3 store called for {args[0].id[:15]}...")
+                        return None
+                    async def retrieve(self, query: str, limit: int = 10, filters: Optional[Dict] = None):
+                        self.logger.debug(f"No-op L3 retrieve called for query: {query[:50]}...")
+                        return []
+                    async def find_similar(self, *args, **kwargs): return []
+                    async def get_important_memories(self, *args, **kwargs): return []
+                    async def get_by_type(self, *args, **kwargs): return []
+                    async def delete(self, memory_id: str) -> bool: return False
+                    async def get_stats(self) -> Dict[str, Any]: return {"tier": "L3_long_term_noop", "count": 0}
+                    async def health_check(self) -> bool: return True
+                    def should_store_in_tier(self, *_args, **_kwargs): return False
+                self.L3 = NoOpLongTermMemory()
+
+        
+        # Initialize L4: Persistent Memory (PostgreSQL)
+        # PersistentMemory handles its own No-Op shim if psycopg is not available
+        self.L4 = PersistentMemory(
+            postgres_conn,
+            table_name=self.config.get("memory.persistent.table_name", "lotus_knowledge")
+        )
+        try:
+            self.logger.debug("Initializing L4 PersistentMemory schema.")
+            await self.L4.initialize()
+            self.logger.debug("L4 PersistentMemory schema initialized.")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize L4 PersistentMemory schema: {e}. L4 functionality may be limited.", exc_info=True)
+            # If initialization fails, L4 might still be a NoOp shim or partially functional,
+            # but we allow the system to continue.
+        
+        # Initialize retrieval system
+        self.retrieval = MemoryRetrieval(self.L1, self.L2, self.L3, self.L4)
+        self.logger.debug("MemoryRetrieval system initialized.")
+        
+        # Start background consolidation if enabled
+        if self.config.get("memory.consolidation.enabled", True):
+            interval_minutes = self.config.get("memory.consolidation.interval_minutes", 30)
+            asyncio.create_task(self._consolidation_loop(interval_minutes))
+            self.logger.info(f"Memory consolidation loop started with {interval_minutes} minute interval.")
+        
+        self.logger.info("Memory system initialized successfully")
+    
+    @on_event("memory.store")
+    async def handle_store(self, event_data: Dict) -> None:
+        """
+        Store a memory in appropriate tiers
+        
+        Event data should contain:
+        - content: str
+        - memory_type: str (episodic, semantic, procedural, working)
+        - importance: float (0.0-1.0)
+        - metadata: dict (optional)
+        """
+        try:
+            # Parse event data
+            content = event_data.get("content")
+            if not content:
+                self.logger.warning("Attempted to store memory with no content.")
+                return
+
+            memory_type = MemoryType(event_data.get("memory_type", "episodic"))
+            importance = event_data.get("importance", 0.5)
+            metadata = event_data.get("metadata", {})
+            source_module = event_data.get("source_module", self.name) # Default to self.name
+
+            # Create memory item
+            memory = MemoryItem(
+                content=content,
+                memory_type=memory_type,
+                timestamp=time.time(),
+                importance=importance,
+                metadata=metadata,
+                source_module=source_module
+            )
+            
+            # Store in L1 (always)
+            memory_id = await self.L1.store(memory)
+            self.logger.debug(f"Stored in L1: {memory_id}")
+            
+            # Store in L2 (always)
+            await self.L2.store(memory)
+            self.logger.debug(f"Stored in L2: {memory_id}")
+            
+            # Store in L3 if important enough
+            if self.L3.should_store_in_tier(memory):
+                await self.L3.store(memory)
+                self.logger.debug(f"Stored in L3: {memory_id}")
+            
+            # Store in L4 if critical
+            if self.L4.should_store_in_tier(memory):
+                await self.L4.store(memory)
+                self.logger.debug(f"Stored in L4: {memory_id}")
+            
+            # Publish confirmation
+            await self.publish("memory.stored", {
+                "memory_id": memory_id,
+                "tiers": self._get_stored_tiers(importance),
+                "timestamp": memory.timestamp,
+                "content_preview": content[:50]
+            })
+            
+            self.logger.debug(f"Memory stored: {content[:50]}... (ID: {memory_id})")
+        except Exception as e:
+            self.logger.exception(f"Error handling memory.store event for content: {event_data.get('content', '')[:50]}...")
+            await self.publish("memory.error", {
+                "operation": "store",
+                "content_preview": event_data.get("content", "")[:50],
+                "error": str(e)
+            })
+    
+    @on_event("memory.retrieve")
+    async def handle_retrieve(self, event_data: Dict) -> None:
+        """
+        Retrieve memories by query
+        
+        Event data should contain:
+        - query: str
+        - max_results: int (optional)
+        - strategy: str (optional)
+        """
+        try:
+            query = event_data.get("query")
+            if not query:
+                self.logger.warning("Retrieve request received with no query.")
+                await self.publish("memory.retrieved", {"query": "", "count": 0, "memories": []})
+                return
+
+            max_results = event_data.get("max_results", 10)
+            strategy = event_data.get("strategy", RetrievalStrategy.COMPREHENSIVE.value)
+            
+            self.logger.debug(f"Handling memory.retrieve for query: {query[:50]}... with strategy: {strategy}")
+
+            # Ensure strategy is a valid enum member
+            try:
+                retrieval_strategy_enum = RetrievalStrategy(strategy)
+            except ValueError:
+                self.logger.warning(f"Invalid retrieval strategy '{strategy}'. Falling back to COMPREHENSIVE.")
+                retrieval_strategy_enum = RetrievalStrategy.COMPREHENSIVE
+
+            config = RetrievalConfig(
+                strategy=retrieval_strategy_enum,
+                max_results=max_results
+            )
+
+            # Retrieve memories using the requested strategy string
+            memories = await self.retrieval.retrieve(query, config=config)
+            
+            # Publish results
+            await self.publish("memory.retrieved", {
+                "query": query,
+                "count": len(memories),
+                "memories": [m.to_dict() for m in memories]
+            })
+            
+            self.logger.debug(f"Retrieved {len(memories)} memories for query: {query[:50]}...")
+        except Exception as e:
+            self.logger.exception(f"Error handling memory.retrieve event for query: {event_data.get('query', '')[:50]}...")
+            await self.publish("memory.error", {
+                "operation": "retrieve",
+                "query_preview": event_data.get("query", "")[:50],
+                "error": str(e)
+            })
+    
+    @on_event("memory.get_context")
+    async def handle_get_context(self, event_data: Dict) -> None:
+        """
+        Get recent context for reasoning engine
+        
+        Event data should contain:
+        - minutes: int (default: 10)
+        """
+        try:
+            minutes = event_data.get("minutes", 10)
+            self.logger.debug(f"Handling memory.get_context for last {minutes} minutes.")
+            
+            # Get recent context
+            context = await self.retrieval.get_recent_context(minutes)
+            
+            # Publish context
+            await self.publish("memory.context", {
+                "minutes": minutes,
+                "count": len(context),
+                "memories": [m.to_dict() for m in context]
+            })
+            self.logger.debug(f"Provided {len(context)} memories as context for {minutes} minutes.")
+        except Exception as e:
+            self.logger.exception(f"Error handling memory.get_context event for {event_data.get('minutes', 10)} minutes.")
+            await self.publish("memory.error", {
+                "operation": "get_context",
+                "minutes": event_data.get("minutes", 10),
+                "error": str(e)
+            })
+    
+    @tool("get_memory_stats")
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get memory system statistics"""
+        try:
+            stats = await self.retrieval.get_stats()
+            self.logger.debug("Generated memory system statistics.")
+            return stats
+        except Exception as e:
+            self.logger.exception("Error getting memory stats.")
+            return {"error": str(e), "message": "Failed to retrieve memory statistics."}
+    
+    async def _consolidation_loop(self, interval_minutes: int) -> None:
+        """
+        Background memory consolidation
+        
+        Periodically moves memories between tiers based on importance
+        and access patterns
+        """
+        interval_seconds = interval_minutes * 60
+        self.logger.info(f"Starting memory consolidation loop with interval: {interval_minutes} minutes.")
+        
+        while True:
+            try:
+                await asyncio.sleep(interval_seconds)
+                
+                self.logger.info("Initiating memory consolidation process...")
+                
+                # Get consolidation threshold
+                threshold = self.config.get("memory.consolidation.importance_threshold", 0.5)
+                
+                l1_promoted = 0
+                l2_promoted = 0
+                l3_promoted = 0
+
+                # L1 → L2 consolidation
+                self.logger.debug("Consolidating L1 -> L2...")
+                l1_memories = await self.L1.get_all_for_consolidation()
+                for memory in l1_memories:
+                    if self.L2.should_store_in_tier(memory):
+                        await self.L2.store(memory)
+                        l1_promoted += 1
+                self.logger.debug(f"L1 -> L2: {l1_promoted} memories promoted.")
+                
+                # L2 → L3 consolidation
+                self.logger.debug("Consolidating L2 -> L3...")
+                # It's better to fetch a manageable batch, not necessarily all 1000 at once
+                l2_memories = await self.L2.retrieve("*", limit=self.L2.max_items, filters={"min_importance": threshold})
+                for memory in l2_memories:
+                    if self.L3.should_store_in_tier(memory):
+                        await self.L3.store(memory)
+                        l2_promoted += 1
+                self.logger.debug(f"L2 -> L3: {l2_promoted} memories promoted.")
+                
+                # L3 → L4 consolidation (only if L4 available)
+                self.logger.debug("Consolidating L3 -> L4...")
+                if self.L4 and hasattr(self.L4, 'should_store_in_tier'): # Ensure L4 is not a NoOp or has the method
+                    l3_memories = await self.L3.get_important_memories(min_importance=0.8) # Assuming this method exists on L3
+                    for memory in l3_memories:
+                        try:
+                            if self.L4.should_store_in_tier(memory):
+                                await self.L4.store(memory)
+                                l3_promoted += 1
+                        except Exception as e:
+                            self.logger.warning(f"Error promoting memory to L4 during consolidation: {e}", exc_info=True)
+                else:
+                    self.logger.debug("L4 is not configured for consolidation or missing 'should_store_in_tier'. Skipping L3->L4.")
+                self.logger.debug(f"L3 -> L4: {l3_promoted} memories promoted.")
+                
+                # Publish consolidation results
+                await self.publish("memory.consolidated", {
+                    "l1_to_l2": l1_promoted,
+                    "l2_to_l3": l2_promoted,
+                    "l3_to_l4": l3_promoted,
+                    "timestamp": time.time()
+                })
+                
+                self.logger.info(f"Consolidation complete: L1→L2:{l1_promoted}, L2→L3:{l2_promoted}, L3→L4:{l3_promoted}")
+                
+            except asyncio.CancelledError:
+                self.logger.info("Memory consolidation loop cancelled.")
+                break # Exit loop if task is cancelled
+            except Exception as e:
+                self.logger.exception(f"Major error in memory consolidation loop: {e}")
+                # Log the error and continue, but add a backoff to prevent tight loops on persistent errors.
+                await asyncio.sleep(60) # Wait 1 minute before retrying after an error
+    
+    def _get_stored_tiers(self, importance: float) -> List[str]:
+        """Determine which tiers a memory was stored in"""
+        tiers = ["L1", "L2"]
+        # Create a dummy memory item for checking `should_store_in_tier`
+        dummy_memory = MemoryItem(content="", memory_type=MemoryType.EPISODIC, timestamp=time.time(), importance=importance)
+        if self.L3 and self.L3.should_store_in_tier(dummy_memory):
+            tiers.append("L3")
+        if self.L4 and self.L4.should_store_in_tier(dummy_memory):
+            tiers.append("L4")
+        return tiers
+
+    # ------------------------------------------------------------------
+    # Programmatic API (facade) for other modules
+    # Reasoning and other modules expect methods like `recall` and
+    # `remember` to be available on the memory service instance.
+    # These methods reuse the internal handlers to provide a simple
+    # async interface.
+    # ------------------------------------------------------------------
+    async def recall(self, query: str, limit: int = 10, strategy: str = "comprehensive") -> List[Any]:
+        """Programmatic retrieval API used by other modules.
+
+        Returns a list of MemoryItem objects (not serialized).
+        """
+        self.logger.debug(f"[MemoryModule.recall] - Called with query: {query[:50]}... limit: {limit}, strategy: {strategy}")
+        try:
+            # Ensure strategy is a valid enum member
+            try:
+                retrieval_strategy_enum = RetrievalStrategy(strategy)
+            except ValueError:
+                self.logger.warning(f"Invalid retrieval strategy '{strategy}' in recall. Falling back to COMPREHENSIVE.")
+                retrieval_strategy_enum = RetrievalStrategy.COMPREHENSIVE
+
+            config = RetrievalConfig(max_results=limit, strategy=retrieval_strategy_enum)
+            if hasattr(self, 'retrieval') and self.retrieval is not None:
+                memories = await self.retrieval.retrieve(query, config=config)
+                self.logger.debug(f"[MemoryModule.recall] - Retrieved {len(memories)} memories.")
+                return memories or []
+            else:
+                self.logger.warning("[MemoryModule.recall] - MemoryRetrieval not initialized. Returning empty list.")
+                return []
+        except Exception as e:
+            self.logger.exception(f"[MemoryModule.recall] - Error during programmatic recall for query: {query[:50]}...")
+            return []
+
+    # Legacy compatibility methods -------------------------------------
+    async def search(self, query: str, limit: int = 10, **kwargs) -> List[Dict[str, Any]]:
+        """Compatibility wrapper so callers can use memory.search(...).
+
+        Returns a list of simple dicts (serialized MemoryItem) to match
+        existing call-sites in reasoning and tools.
+        """
+        self.logger.debug(f"[MemoryModule.search] - Called (legacy) with query: {query[:50]}...")
+        try:
+            # Note: Strategy could come from kwargs
+            strategy = kwargs.get('strategy', 'comprehensive')
+            results = await self.recall(query, limit=limit, strategy=strategy)
+            # Convert MemoryItem objects to dicts for older callers
+            return [m.to_dict() if hasattr(m, 'to_dict') else dict(m) for m in (results or [])]
+        except Exception as e:
+            self.logger.exception(f"[MemoryModule.search] - Error during legacy search for query: {query[:50]}...")
+            return []
+
+    async def store(self, payload: Dict[str, Any]) -> Optional[str]:
+        """Compatibility wrapper for memory.store(...) used by tools.
+
+        Accepts either a MemoryItem-like dict or explicit fields.
+        """
+        self.logger.debug(f"[MemoryModule.store] - Called (legacy) with payload keys: {list(payload.keys()) if isinstance(payload, dict) else 'non-dict'}")
+        try:
+            content = payload.get('content') if isinstance(payload, dict) else str(payload)
+            if not content:
+                self.logger.warning("[MemoryModule.store] - Legacy store called with no content.")
+                return None
+            importance = payload.get('importance', 0.5) if isinstance(payload, dict) else 0.5
+            memory_type = payload.get('type', payload.get('memory_type', 'episodic')) if isinstance(payload, dict) else 'episodic'
+            metadata = payload.get('metadata', {}) if isinstance(payload, dict) else {}
+            source_module = payload.get('source_module', self.name) # Default to self.name
+
+            return await self.remember(content=content, memory_type=memory_type, importance=importance, metadata=metadata, source_module=source_module)
+        except Exception as e:
+            self.logger.exception(f"[MemoryModule.store] - Error during legacy store for content: {payload.get('content', '')[:50]}...")
+            return None
+
+    async def get_recent(self, type: str = "conversation", limit: int = 10) -> List[Dict[str, Any]]:
+        """Convenience wrapper used by ContextBuilder._get_conversation_history
+
+        This maps to short-term or working memory retrieval as appropriate.
+        """
+        self.logger.debug(f"[MemoryModule.get_recent] - Called (legacy) for type: {type}, limit: {limit}")
+        try:
+            if type == "conversation":
+                if hasattr(self.L2, 'retrieve_recent'):
+                    recent = await self.L2.retrieve_recent(count=limit) # Assuming L2 has retrieve_recent
+                    out = []
+                    for entry in recent:
+                        data = entry # L2.retrieve_recent returns MemoryItem directly now
+                        out.append({
+                            'content': data.content,
+                            'timestamp': data.timestamp,
+                            'metadata': data.metadata
+                        })
+                    self.logger.debug(f"[MemoryModule.get_recent] - Retrieved {len(out)} recent conversation items.")
+                    return out
+                else:
+                    self.logger.warning("[MemoryModule.get_recent] - L2.retrieve_recent not available. Returning empty list.")
+                    return []
+            else:
+                return []
+        except Exception as e:
+            self.logger.exception(f"[MemoryModule.get_recent] - Error during legacy get_recent for type: {type}.")
+            return []
+
+    async def get_working_memory(self) -> List[Dict[str, Any]]:
+        """Return a small list of working memory entries for context builders."""
+        self.logger.debug(f"[MemoryModule.get_working_memory] - Called (legacy).")
+        try:
+            # Assuming L1.retrieve('*') returns MemoryItem objects
+            working_mem_items = await self.L1.retrieve("*", limit=10) # Limit to 10 for working memory
+            out = []
+            for item in working_mem_items:
+                out.append(item.to_dict()) # Convert to dict as expected by legacy callers
+            self.logger.debug(f"[MemoryModule.get_working_memory] - Retrieved {len(out)} working memory items.")
+            return out
+        except Exception as e:
+            self.logger.exception(f"[MemoryModule.get_working_memory] - Error during legacy get_working_memory.")
+            return []
+
+    async def remember(
+        self,
+        content: str,
+        memory_type: str = "episodic",
+        importance: float = 0.5,
+        metadata: Optional[Dict] = None,
+        source_module: Optional[str] = None
+    ) -> Optional[str]:
+        """Programmatic store API used by other modules.
+
+        Mirrors the behavior of the `memory.store` event handler and
+        returns the L1 memory id when available.
+        """
+        self.logger.debug(f"[MemoryModule.remember] - Called with content: {content[:50]}... type: {memory_type}")
+        metadata = metadata or {}
+        source_module = source_module or self.name # Default source module
+
+        try:
+            memory = MemoryItem(
+                content=content,
+                memory_type=MemoryType(memory_type),
+                timestamp=time.time(),
+                importance=importance,
+                metadata=metadata,
+                source_module=source_module
+            )
+
+            memory_id = await self.L1.store(memory)
+            await self.L2.store(memory)
+            if self.L3.should_store_in_tier(memory):
+                await self.L3.store(memory)
+            if self.L4.should_store_in_tier(memory):
+                await self.L4.store(memory)
+            
+            self.logger.debug(f"[MemoryModule.remember] - Memory ID {memory_id} remembered across tiers.")
+            return memory_id
+        except Exception as e:
+            self.logger.exception(f"[MemoryModule.remember] - Error storing memory for content: {content[:50]}...")
+            return None

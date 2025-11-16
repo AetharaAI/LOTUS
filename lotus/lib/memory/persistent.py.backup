@@ -1,0 +1,488 @@
+"""
+LOTUS Memory System - L4: Persistent Memory
+
+PostgreSQL-backed persistent memory for permanent structured knowledge.
+This is the "hard drive" of LOTUS - permanent, structured, queryable facts.
+
+Characteristics:
+- TTL: Permanent (no expiry)
+- Storage: PostgreSQL (relational database)
+- Capacity: Unlimited (scales with disk)
+- Search: SQL queries + full-text search
+- Use case: Facts, user profile, learned skills, system knowledge
+
+PostgreSQL provides:
+- ACID transactions
+- Complex queries (JOIN, aggregation)
+- Full-text search
+- JSON columns for flexible metadata
+- Backup/restore capability
+- Multi-user access
+
+This is where LOTUS stores:
+- User preferences and profile
+- Learned patterns and skills
+- System configuration
+- Important facts that should NEVER be forgotten
+"""
+
+import json
+import time
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+    _PSYCOPG_AVAILABLE = True
+except Exception:
+    psycopg = None
+    dict_row = None
+    _PSYCOPG_AVAILABLE = False
+
+from .base import MemoryTier, MemoryItem, MemoryType
+
+
+if not _PSYCOPG_AVAILABLE:
+    # psycopg is not installed in the current environment. Provide a
+    # lightweight no-op PersistentMemory implementation so imports succeed
+    # and callers can continue to operate (they will get empty/defaults).
+    class PersistentMemory(MemoryTier):
+        def __init__(self, postgres_conn, table_name: str = "lotus_memories"):
+            super().__init__("persistent_memory", tier_level=4, ttl=None)
+            self.conn = None
+            self.table_name = table_name
+
+        async def initialize(self) -> None:
+            # No-op when psycopg is not available
+            return
+
+        async def store(self, memory: MemoryItem) -> str:
+            # Return a dummy id
+            return "0"
+
+        async def search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+            return []
+
+else:
+    class PersistentMemory(MemoryTier):
+        """
+        L4: Persistent Memory - Permanent structured knowledge
+        
+        This is LOTUS's permanent knowledge base. Everything here survives
+        system restarts, crashes, and upgrades.
+        
+        Storage:
+        - PostgreSQL table: `lotus_memories`
+        - Schema:
+            - id: TEXT PRIMARY KEY
+            - content: TEXT (searchable via tsvector)
+            - memory_type: TEXT
+            - timestamp: FLOAT
+            - importance: FLOAT
+            - metadata: JSONB
+            - access_count: INTEGER
+            - last_accessed: FLOAT
+            - source_module: TEXT
+            - created_at: TIMESTAMP
+            - updated_at: TIMESTAMP
+        
+        Memories get promoted here when:
+        - Importance >= 0.8 (critical information)
+        - Marked as "persistent" type
+        - User profile data
+        - System configuration
+        - Learned skills/patterns
+        """
+        
+        def __init__(self, postgres_conn, table_name: str = "lotus_memories"):
+            """
+            Initialize Persistent Memory
+            
+            Args:
+                postgres_conn: psycopg connection (async)
+                table_name: Name of PostgreSQL table
+            """
+            super().__init__("persistent_memory", tier_level=4, ttl=None)  # No TTL
+            
+            self.conn = postgres_conn
+            self.table_name = table_name
+        
+        async def initialize(self) -> None:
+            """
+            Create database schema if it doesn't exist
+            
+            This is called once on system startup
+            """
+            async with self.conn.cursor() as cur:
+                # Create table
+                await cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_name} (
+                        id TEXT PRIMARY KEY,
+                        content TEXT NOT NULL,
+                        content_tsvector TSVECTOR,  -- For full-text search
+                        memory_type TEXT NOT NULL,
+                        timestamp FLOAT NOT NULL,
+                        importance FLOAT NOT NULL,
+                        metadata JSONB,
+                        access_count INTEGER DEFAULT 0,
+                        last_accessed FLOAT,
+                        source_module TEXT,
+                        source_tier TEXT DEFAULT 'L4',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # Create indexes for fast querying
+                await cur.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{self.table_name}_memory_type 
+                    ON {self.table_name}(memory_type)
+                """)
+                
+                await cur.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{self.table_name}_importance 
+                    ON {self.table_name}(importance)
+                """)
+                
+                await cur.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{self.table_name}_timestamp 
+                    ON {self.table_name}(timestamp)
+                """)
+                
+                # Create full-text search index
+                await cur.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{self.table_name}_content_search 
+                    ON {self.table_name} USING GIN(content_tsvector)
+                """)
+                
+                # Create trigger to update tsvector automatically
+                await cur.execute(f"""
+                    CREATE OR REPLACE FUNCTION {self.table_name}_tsvector_update() 
+                    RETURNS TRIGGER AS $$
+                    BEGIN
+                        NEW.content_tsvector = to_tsvector('english', NEW.content);
+                        NEW.updated_at = CURRENT_TIMESTAMP;
+                        RETURN NEW;
+                    END;
+                    $$ LANGUAGE plpgsql
+                """)
+                
+                await cur.execute(f"""
+                    DROP TRIGGER IF EXISTS tsvector_update ON {self.table_name}
+                """)
+                
+                await cur.execute(f"""
+                    CREATE TRIGGER tsvector_update 
+                    BEFORE INSERT OR UPDATE ON {self.table_name}
+                    FOR EACH ROW EXECUTE FUNCTION {self.table_name}_tsvector_update()
+                """)
+                
+                await self.conn.commit()
+        
+        async def store(self, memory: MemoryItem) -> str:
+            """
+            Store memory in L4 (Persistent Memory)
+            
+            Process:
+            1. Insert into PostgreSQL
+            2. Full-text index updated automatically (trigger)
+            3. Return memory ID
+            
+            Uses UPSERT (INSERT ... ON CONFLICT UPDATE) so memories
+            can be updated if they already exist.
+            """
+            # Set source tier
+            memory.source_tier = "L4"
+            
+            async with self.conn.cursor() as cur:
+                # Upsert memory
+                await cur.execute(f"""
+                    INSERT INTO {self.table_name} 
+                    (id, content, memory_type, timestamp, importance, metadata, 
+                     access_count, last_accessed, source_module, source_tier)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        content = EXCLUDED.content,
+                        memory_type = EXCLUDED.memory_type,
+                        importance = EXCLUDED.importance,
+                        metadata = EXCLUDED.metadata,
+                        access_count = EXCLUDED.access_count,
+                        last_accessed = EXCLUDED.last_accessed,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (
+                    memory.id,
+                    memory.content,
+                    memory.memory_type.value,
+                    memory.timestamp,
+                    memory.importance,
+                    json.dumps(memory.metadata),
+                    memory.access_count,
+                    memory.last_accessed,
+                    memory.source_module,
+                    "L4"
+                ))
+                
+                await self.conn.commit()
+            
+            return memory.id
+        
+    async def retrieve(self, query: str, limit: int = 10,
+                      filters: Optional[Dict] = None) -> List[MemoryItem]:
+        """
+        Retrieve memories from persistent memory
+        
+        Uses PostgreSQL full-text search for query matching
+        
+        Search method:
+        - Full-text search on content (ts_rank)
+        - Metadata filters
+        - Sorted by relevance + importance
+        
+        Args:
+            query: Search query
+            limit: Maximum results
+            filters: Optional filters
+            
+        Returns:
+            List of matching memories
+        """
+        # Build WHERE clause
+        where_clauses = []
+        params = []
+        
+        # Full-text search
+        if query and query != "*":
+            where_clauses.append("content_tsvector @@ plainto_tsquery('english', %s)")
+            params.append(query)
+        
+        # Apply filters
+        if filters:
+            if 'memory_type' in filters:
+                where_clauses.append("memory_type = %s")
+                params.append(filters['memory_type'])
+            
+            if 'min_importance' in filters:
+                where_clauses.append("importance >= %s")
+                params.append(filters['min_importance'])
+            
+            if 'source_module' in filters:
+                where_clauses.append("source_module = %s")
+                params.append(filters['source_module'])
+        
+        where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
+        
+        # Build ORDER BY - combine full-text rank with importance
+        if query and query != "*":
+            order_by = "ts_rank(content_tsvector, plainto_tsquery('english', %s)) DESC, importance DESC"
+            params.append(query)
+        else:
+            order_by = "importance DESC, timestamp DESC"
+        
+        # Execute query
+        async with self.conn.cursor(row_factory=dict_row) as cur:
+            sql = f"""
+                SELECT * FROM {self.table_name}
+                WHERE {where_sql}
+                ORDER BY {order_by}
+                LIMIT %s
+            """
+            params.append(limit)
+            
+            await cur.execute(sql, params)
+            rows = await cur.fetchall()
+        
+        # Convert to MemoryItem objects
+        memories = []
+        for row in rows:
+            memory = MemoryItem(
+                content=row['content'],
+                memory_type=MemoryType(row['memory_type']),
+                timestamp=row['timestamp'],
+                importance=row['importance'],
+                metadata=row['metadata'] or {},
+                access_count=row['access_count'],
+                last_accessed=row['last_accessed'],
+                id=row['id'],
+                source_module=row['source_module'],
+                source_tier="L4"
+            )
+            
+            # Mark as accessed
+            memory.mark_accessed()
+            
+            # Update access tracking
+            await self._update_access(memory.id, memory.access_count, memory.last_accessed)
+            
+            memories.append(memory)
+        
+        return memories
+    
+    async def delete(self, memory_id: str) -> bool:
+        """Delete a specific memory from persistent memory"""
+        async with self.conn.cursor() as cur:
+            await cur.execute(f"""
+                DELETE FROM {self.table_name} WHERE id = %s
+            """, (memory_id,))
+            
+            deleted = cur.rowcount > 0
+            await self.conn.commit()
+            
+            return deleted
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get persistent memory statistics"""
+        async with self.conn.cursor(row_factory=dict_row) as cur:
+            # Get count
+            await cur.execute(f"SELECT COUNT(*) as count FROM {self.table_name}")
+            count_row = await cur.fetchone()
+            count = count_row['count']
+            
+            # Get stats
+            await cur.execute(f"""
+                SELECT 
+                    AVG(importance) as avg_importance,
+                    MIN(timestamp) as oldest_timestamp,
+                    MAX(timestamp) as newest_timestamp,
+                    memory_type,
+                    COUNT(*) as type_count
+                FROM {self.table_name}
+                GROUP BY memory_type
+            """)
+            stats_rows = await cur.fetchall()
+        
+        # Process stats
+        avg_importance = 0
+        oldest_timestamp = None
+        newest_timestamp = None
+        memory_types = {}
+        
+        for row in stats_rows:
+            if row['avg_importance']:
+                avg_importance = max(avg_importance, row['avg_importance'])
+            if row['oldest_timestamp']:
+                if oldest_timestamp is None or row['oldest_timestamp'] < oldest_timestamp:
+                    oldest_timestamp = row['oldest_timestamp']
+            if row['newest_timestamp']:
+                if newest_timestamp is None or row['newest_timestamp'] > newest_timestamp:
+                    newest_timestamp = row['newest_timestamp']
+            
+            memory_types[row['memory_type']] = row['type_count']
+        
+        return {
+            "tier": "L4_persistent",
+            "count": count,
+            "max_capacity": "unlimited",
+            "avg_importance": avg_importance,
+            "oldest_timestamp": oldest_timestamp,
+            "newest_timestamp": newest_timestamp,
+            "age_days": (time.time() - oldest_timestamp) / 86400 if oldest_timestamp else 0,
+            "memory_types": memory_types,
+            "storage_type": "postgresql",
+            "features": ["full_text_search", "ACID", "relational"]
+        }
+    
+    async def get_facts(self, limit: int = 100) -> List[MemoryItem]:
+        """
+        Get all semantic memories (facts)
+        
+        These are structured knowledge items that LOTUS has learned
+        """
+        return await self.retrieve("*", limit=limit, 
+                                  filters={'memory_type': MemoryType.SEMANTIC.value})
+    
+    async def get_skills(self, limit: int = 100) -> List[MemoryItem]:
+        """
+        Get all procedural memories (skills)
+        
+        These are learned patterns, workflows, and procedures
+        """
+        return await self.retrieve("*", limit=limit,
+                                  filters={'memory_type': MemoryType.PROCEDURAL.value})
+    
+    async def get_user_profile_data(self) -> Dict[str, Any]:
+        """
+        Get all user profile-related memories
+        
+        Returns structured user preferences, settings, and learned behaviors
+        """
+        async with self.conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(f"""
+                SELECT * FROM {self.table_name}
+                WHERE metadata->>'category' = 'user_profile'
+                ORDER BY importance DESC
+            """)
+            
+            rows = await cur.fetchall()
+        
+        # Build profile dict
+        profile = {}
+        for row in rows:
+            metadata = row['metadata'] or {}
+            key = metadata.get('profile_key', row['id'])
+            profile[key] = {
+                'content': row['content'],
+                'importance': row['importance'],
+                'timestamp': row['timestamp'],
+                'metadata': metadata
+            }
+        
+        return profile
+    
+    async def store_user_preference(self, key: str, value: Any, 
+                                   importance: float = 0.9) -> str:
+        """
+        Store a user preference permanently
+        
+        This is a convenience method for storing user settings
+        """
+        memory = MemoryItem(
+            content=f"User preference: {key} = {json.dumps(value)}",
+            memory_type=MemoryType.SEMANTIC,
+            timestamp=time.time(),
+            importance=importance,
+            metadata={
+                'category': 'user_profile',
+                'profile_key': key,
+                'value': value
+            },
+            id=f"user_pref:{key}"
+        )
+        
+        return await self.store(memory)
+    
+    async def _update_access(self, memory_id: str, access_count: int,
+                            last_accessed: Optional[float]) -> None:
+        """Update access tracking for a memory"""
+        async with self.conn.cursor() as cur:
+            await cur.execute(f"""
+                UPDATE {self.table_name}
+                SET access_count = %s, last_accessed = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (access_count, last_accessed, memory_id))
+            
+            await self.conn.commit()
+    
+    async def health_check(self) -> bool:
+        """Check if PostgreSQL is accessible"""
+        try:
+            async with self.conn.cursor() as cur:
+                await cur.execute("SELECT 1")
+                self.is_healthy = True
+                return True
+        except Exception as e:
+            self.is_healthy = False
+            return False
+    
+    def should_store_in_tier(self, memory: MemoryItem) -> bool:
+        """
+        Persistent memory stores memories that:
+        - Have importance >= 0.8 (critical)
+        - Are marked as persistent type
+        - User profile data
+        - System configuration
+        """
+        return (
+            memory.importance >= 0.8 or
+            memory.memory_type == MemoryType.PERSISTENT or
+            (memory.metadata and memory.metadata.get('category') == 'user_profile')
+        )

@@ -1,0 +1,412 @@
+"""
+LOTUS Memory System - L3: Long-term Memory
+
+ChromaDB-backed long-term semantic memory.
+This is the "intelligent memory" of LOTUS - understanding meaning, not just keywords.
+
+Characteristics:
+- TTL: No expiry (permanent until explicitly removed)
+- Storage: ChromaDB (vector embeddings)
+- Capacity: Unlimited (scales with disk)
+- Search: Semantic similarity (vector search)
+- Use case: Important memories, learned patterns, conceptual knowledge
+
+ChromaDB provides:
+- Vector similarity search
+- Automatic embedding generation
+- Metadata filtering
+- Distance metrics (cosine, L2, IP)
+- Persistent storage
+
+This is where LOTUS's true intelligence emerges - she can recall
+memories by meaning, not just exact keywords.
+"""
+
+import json
+import time
+from typing import List, Dict, Any, Optional
+import chromadb
+from chromadb.config import Settings
+from chromadb.utils import embedding_functions
+
+from .base import MemoryTier, MemoryItem, MemoryType
+
+
+class LongTermMemory(MemoryTier):
+    """
+    L3: Long-term Memory - Semantic memory (permanent, searchable by meaning)
+    
+    This is where LOTUS stores important memories that she'll need long-term.
+    Unlike L1/L2 which are time-based, L3 is importance-based.
+    
+    Key insight: Memories here are searched by SEMANTIC SIMILARITY, not keywords.
+    
+    Examples:
+    - Query: "authentication issues"
+      Returns: "User had FastAPI JWT token validation bug"
+    - Query: "performance optimization"
+      Returns: "Implemented Redis caching for database queries"
+    
+    Storage:
+    - ChromaDB collection: `lotus_memories`
+    - Embeddings: sentence-transformers (all-MiniLM-L6-v2)
+    - Metadata: importance, type, timestamp, access_count
+    
+    Memories get promoted here when:
+    - Importance >= 0.5
+    - Accessed multiple times in L2
+    - Explicitly marked as important by reasoning engine
+    """
+    
+    def __init__(self, chroma_client: chromadb.Client, 
+                 collection_name: str = "lotus_memories",
+                 embedding_model: str = "all-MiniLM-L6-v2"):
+        """
+        Initialize Long-term Memory
+        
+        Args:
+            chroma_client: ChromaDB client
+            collection_name: Name of ChromaDB collection
+            embedding_model: SentenceTransformer model name
+        """
+        super().__init__("long_term_memory", tier_level=3, ttl=None)  # No TTL
+        
+        self.chroma = chroma_client
+        self.collection_name = collection_name
+        
+        # Initialize embedding function
+        self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=embedding_model
+        )
+        
+        # Get or create collection
+        self.collection = self.chroma.get_or_create_collection(
+            name=collection_name,
+            embedding_function=self.embedding_function,
+            metadata={"description": "LOTUS long-term semantic memory"}
+        )
+    
+    async def store(self, memory: MemoryItem) -> str:
+        """
+        Store memory in L3 (Long-term Memory)
+        
+        Process:
+        1. Generate embedding from content (automatic via ChromaDB)
+        2. Store embedding + content + metadata
+        3. Index for fast retrieval
+        
+        The embedding captures the MEANING of the content, enabling
+        semantic search later.
+        """
+        # Set source tier
+        memory.source_tier = "L3"
+        
+        # Prepare metadata for ChromaDB
+        metadata = {
+            "memory_type": memory.memory_type.value,
+            "timestamp": memory.timestamp,
+            "importance": memory.importance,
+            "access_count": memory.access_count,
+            "last_accessed": memory.last_accessed or 0.0,
+            "source_module": memory.source_module or "",
+            **memory.metadata  # Include original metadata
+        }
+        
+        # Add to collection (embedding generated automatically)
+        self.collection.add(
+            documents=[memory.content],
+            metadatas=[metadata],
+            ids=[memory.id]
+        )
+        
+        return memory.id
+    
+    async def retrieve(self, query: str, limit: int = 10,
+                      filters: Optional[Dict] = None) -> List[MemoryItem]:
+        """
+        Retrieve memories from long-term memory using semantic search
+        
+        This is the MAGIC of L3 - search by meaning, not keywords!
+        
+        Process:
+        1. Generate embedding for query
+        2. Find semantically similar memories (cosine similarity)
+        3. Apply metadata filters
+        4. Return top N results
+        
+        Args:
+            query: Natural language query
+            limit: Maximum results
+            filters: Optional filters (memory_type, importance, etc.)
+            
+        Returns:
+            List of semantically relevant memories
+        """
+        # Build ChromaDB query filters
+        where = {}
+        if filters:
+            if 'memory_type' in filters:
+                where['memory_type'] = filters['memory_type']
+            
+            if 'min_importance' in filters:
+                where['importance'] = {"$gte": filters['min_importance']}
+            
+            if 'source_module' in filters:
+                where['source_module'] = filters['source_module']
+        
+        # Query collection (semantic search)
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=limit,
+            where=where if where else None
+        )
+        
+        # Convert results to MemoryItem objects
+        memories = []
+        
+        if results and results['documents']:
+            for i, doc in enumerate(results['documents'][0]):
+                metadata = results['metadatas'][0][i]
+                distance = results['distances'][0][i] if 'distances' in results else 0.0
+                
+                memory = MemoryItem(
+                    content=doc,
+                    memory_type=MemoryType(metadata.get('memory_type', 'semantic')),
+                    timestamp=metadata.get('timestamp', time.time()),
+                    importance=metadata.get('importance', 0.5),
+                    access_count=metadata.get('access_count', 0),
+                    last_accessed=metadata.get('last_accessed') or None,
+                    id=results['ids'][0][i],
+                    source_module=metadata.get('source_module') or None,
+                    source_tier="L3",
+                    metadata={
+                        **{k: v for k, v in metadata.items() 
+                           if k not in ['memory_type', 'timestamp', 'importance', 
+                                       'access_count', 'last_accessed', 'source_module']},
+                        'semantic_distance': distance  # Add similarity score
+                    }
+                )
+                
+                # Mark as accessed
+                memory.mark_accessed()
+                
+                # Update in ChromaDB
+                await self._update_access(memory.id, memory.access_count, memory.last_accessed)
+                
+                memories.append(memory)
+        
+        return memories
+    
+    async def delete(self, memory_id: str) -> bool:
+        """Delete a specific memory from long-term memory"""
+        try:
+            self.collection.delete(ids=[memory_id])
+            return True
+        except Exception as e:
+            return False
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get long-term memory statistics"""
+        # Get collection count
+        count = self.collection.count()
+        
+        # Get sample of memories for stats
+        if count > 0:
+            results = self.collection.get(limit=min(count, 1000))
+            
+            if results and results['metadatas']:
+                metadatas = results['metadatas']
+                
+                # Calculate stats
+                total_importance = sum(m.get('importance', 0.5) for m in metadatas)
+                avg_importance = total_importance / len(metadatas)
+                
+                timestamps = [m.get('timestamp', 0) for m in metadatas]
+                oldest_timestamp = min(timestamps) if timestamps else None
+                newest_timestamp = max(timestamps) if timestamps else None
+                
+                memory_types = {}
+                for m in metadatas:
+                    mem_type = m.get('memory_type', 'semantic')
+                    memory_types[mem_type] = memory_types.get(mem_type, 0) + 1
+                
+            else:
+                avg_importance = 0
+                oldest_timestamp = None
+                newest_timestamp = None
+                memory_types = {}
+        else:
+            avg_importance = 0
+            oldest_timestamp = None
+            newest_timestamp = None
+            memory_types = {}
+        
+        return {
+            "tier": "L3_long_term",
+            "count": count,
+            "max_capacity": "unlimited",
+            "avg_importance": avg_importance,
+            "oldest_timestamp": oldest_timestamp,
+            "newest_timestamp": newest_timestamp,
+            "age_days": (time.time() - oldest_timestamp) / 86400 if oldest_timestamp else 0,
+            "memory_types": memory_types,
+            "storage_type": "chromadb_vectors",
+            "embedding_model": "all-MiniLM-L6-v2"
+        }
+    
+    async def find_similar(self, memory_id: str, limit: int = 5) -> List[MemoryItem]:
+        """
+        Find memories similar to a given memory
+        
+        This enables "memory chaining" - finding related memories
+        
+        Args:
+            memory_id: ID of source memory
+            limit: Number of similar memories to return
+            
+        Returns:
+            List of similar memories
+        """
+        # Get the source memory
+        results = self.collection.get(ids=[memory_id])
+        
+        if not results or not results['documents']:
+            return []
+        
+        source_content = results['documents'][0]
+        
+        # Find similar memories
+        return await self.retrieve(source_content, limit=limit + 1)  # +1 to exclude self
+    
+    async def get_by_type(self, memory_type: MemoryType, limit: int = 100) -> List[MemoryItem]:
+        """
+        Get all memories of a specific type
+        
+        Args:
+            memory_type: Type of memory to retrieve
+            limit: Maximum memories to return
+            
+        Returns:
+            List of memories of specified type
+        """
+        results = self.collection.get(
+            where={"memory_type": memory_type.value},
+            limit=limit
+        )
+        
+        memories = []
+        
+        if results and results['documents']:
+            for i, doc in enumerate(results['documents']):
+                metadata = results['metadatas'][i]
+                
+                memory = MemoryItem(
+                    content=doc,
+                    memory_type=memory_type,
+                    timestamp=metadata.get('timestamp', time.time()),
+                    importance=metadata.get('importance', 0.5),
+                    access_count=metadata.get('access_count', 0),
+                    last_accessed=metadata.get('last_accessed') or None,
+                    id=results['ids'][i],
+                    source_module=metadata.get('source_module') or None,
+                    source_tier="L3",
+                    metadata={k: v for k, v in metadata.items() 
+                             if k not in ['memory_type', 'timestamp', 'importance', 
+                                         'access_count', 'last_accessed', 'source_module']}
+                )
+                
+                memories.append(memory)
+        
+        # Sort by importance
+        memories.sort(key=lambda m: m.importance, reverse=True)
+        
+        return memories
+    
+    async def get_important_memories(self, min_importance: float = 0.7, 
+                                    limit: int = 50) -> List[MemoryItem]:
+        """
+        Get the most important memories
+        
+        This is useful for:
+        - Building long-term context
+        - Identifying core knowledge
+        - Memory consolidation decisions
+        
+        Args:
+            min_importance: Minimum importance threshold
+            limit: Maximum memories to return
+            
+        Returns:
+            List of important memories, sorted by importance
+        """
+        results = self.collection.get(
+            where={"importance": {"$gte": min_importance}},
+            limit=limit
+        )
+        
+        memories = []
+        
+        if results and results['documents']:
+            for i, doc in enumerate(results['documents']):
+                metadata = results['metadatas'][i]
+                
+                memory = MemoryItem(
+                    content=doc,
+                    memory_type=MemoryType(metadata.get('memory_type', 'semantic')),
+                    timestamp=metadata.get('timestamp', time.time()),
+                    importance=metadata.get('importance', 0.5),
+                    access_count=metadata.get('access_count', 0),
+                    last_accessed=metadata.get('last_accessed') or None,
+                    id=results['ids'][i],
+                    source_module=metadata.get('source_module') or None,
+                    source_tier="L3",
+                    metadata={k: v for k, v in metadata.items() 
+                             if k not in ['memory_type', 'timestamp', 'importance', 
+                                         'access_count', 'last_accessed', 'source_module']}
+                )
+                
+                memories.append(memory)
+        
+        # Sort by importance (highest first)
+        memories.sort(key=lambda m: m.importance, reverse=True)
+        
+        return memories
+    
+    async def _update_access(self, memory_id: str, access_count: int, 
+                            last_accessed: Optional[float]) -> None:
+        """Update access tracking for a memory"""
+        try:
+            # Update metadata in ChromaDB
+            self.collection.update(
+                ids=[memory_id],
+                metadatas=[{
+                    "access_count": access_count,
+                    "last_accessed": last_accessed or 0.0
+                }]
+            )
+        except Exception as e:
+            # Log error but don't fail
+            pass
+    
+    async def health_check(self) -> bool:
+        """Check if ChromaDB is accessible"""
+        try:
+            self.collection.count()
+            self.is_healthy = True
+            return True
+        except Exception as e:
+            self.is_healthy = False
+            return False
+    
+    def should_store_in_tier(self, memory: MemoryItem) -> bool:
+        """
+        Long-term memory stores memories that:
+        - Have importance >= 0.5
+        - Have been accessed multiple times
+        - Are marked as semantic or procedural
+        """
+        return (
+            memory.importance >= 0.5 or
+            memory.access_count >= 2 or
+            memory.memory_type in [MemoryType.SEMANTIC, MemoryType.PROCEDURAL]
+        )

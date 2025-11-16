@@ -1,0 +1,377 @@
+"""
+LOTUS Memory System - L2: Short-term Memory
+
+Redis Streams-backed short-term memory for recent history (last 24 hours).
+This is the "recent memory" of LOTUS - what happened today.
+
+Characteristics:
+- TTL: 24 hours (configurable)
+- Storage: Redis Streams (append-only log)
+- Capacity: ~1000 items
+- Search: Time-range + keyword
+- Use case: Recent conversation history, today's activities
+
+Redis Streams provide:
+- Ordered, append-only log
+- Time-based queries
+- Consumer groups (for multi-consumer scenarios)
+- Persistence across restarts
+"""
+
+import json
+import time
+from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta
+import redis.asyncio as redis
+
+from .base import MemoryTier, MemoryItem, MemoryType
+
+
+class ShortTermMemory(MemoryTier):
+    """
+    L2: Short-term Memory - Recent history (last 24 hours)
+    
+    Stores conversation flow and recent activities in an ordered stream.
+    Think of this as "what happened today" - the running log of LOTUS's day.
+    
+    Storage:
+    - Redis Stream: `lotus:memory:L2:stream`
+    - Entry format: {memory_id: data, timestamp: ts, ...}
+    - TTL: Messages older than 24 hours are pruned automatically
+    
+    Short-term memories that prove important (accessed multiple times,
+    high importance) get promoted to L3 (Long-term) by consolidation.
+    """
+    
+    def __init__(self, redis_client: redis.Redis, 
+                 ttl_hours: int = 24, max_items: int = 1000):
+        """
+        Initialize Short-term Memory
+        
+        Args:
+            redis_client: Async Redis client
+            ttl_hours: Hours to keep memories (default: 24)
+            max_items: Maximum stream entries
+        """
+        super().__init__("short_term_memory", tier_level=2, ttl=ttl_hours * 3600)
+        self.redis = redis_client
+        self.max_items = max_items
+        self.ttl_hours = ttl_hours
+        
+        # Stream configuration
+        self.stream_key = "lotus:memory:L2:stream"
+        self.index_key = "lotus:memory:L2:index"  # For fast lookups
+    
+    async def store(self, memory: MemoryItem) -> str:
+        """
+        Store memory in L2 (Short-term Memory)
+        
+        Process:
+        1. Add to Redis Stream (append-only)
+        2. Update index for fast lookup
+        3. Trim old entries beyond TTL
+        """
+        # Set source tier
+        memory.source_tier = "L2"
+        
+        # Prepare stream entry
+        entry_data = {
+            "memory_id": memory.id,
+            "content": memory.content,
+            "memory_type": memory.memory_type.value,
+            "timestamp": str(memory.timestamp),
+            "importance": str(memory.importance),
+            "metadata": json.dumps(memory.metadata),
+            "access_count": str(memory.access_count),
+            "last_accessed": str(memory.last_accessed) if memory.last_accessed else "",
+            "source_module": memory.source_module or ""
+        }
+        
+        # Add to stream
+        stream_id = await self.redis.xadd(self.stream_key, entry_data)
+        
+        # Update index (memory_id -> stream_id mapping)
+        await self.redis.hset(self.index_key, memory.id, stream_id)
+        
+        # Trim stream to max length
+        await self.redis.xtrim(self.stream_key, maxlen=self.max_items, approximate=True)
+        
+        # Prune old entries (older than TTL)
+        await self._prune_old_entries()
+        
+        return memory.id
+    
+    async def retrieve(self, query: str, limit: int = 10,
+                      filters: Optional[Dict] = None) -> List[MemoryItem]:
+        """
+        Retrieve memories from short-term memory
+        
+        Search method:
+        - Time-range queries (last N hours)
+        - Keyword search in content
+        - Filter by memory type, importance
+        
+        Returns memories in reverse chronological order (newest first)
+        """
+        memories = []
+        
+        # Determine time range
+        if filters and 'time_range_hours' in filters:
+            hours = filters['time_range_hours']
+            min_timestamp = time.time() - (hours * 3600)
+        else:
+            min_timestamp = time.time() - self.ttl
+        
+        # Read from stream (most recent first)
+        # XREVRANGE reads in reverse order
+        entries = await self.redis.xrevrange(self.stream_key, count=self.max_items)
+        
+        for stream_id, entry_data in entries:
+            # Parse entry
+            memory = self._parse_stream_entry(entry_data)
+            
+            if not memory:
+                continue
+            
+            # Check timestamp
+            if memory.timestamp < min_timestamp:
+                continue
+            
+            # Apply filters
+            if filters:
+                if 'memory_type' in filters:
+                    if memory.memory_type.value != filters['memory_type']:
+                        continue
+                
+                if 'min_importance' in filters:
+                    if memory.importance < filters['min_importance']:
+                        continue
+            
+            # Search query
+            if query and query != "*":
+                query_lower = query.lower()
+                if query_lower not in memory.content.lower():
+                    continue
+            
+            # Mark as accessed
+            memory.mark_accessed()
+            
+            # Update in stream (note: streams are append-only, so we add note of access)
+            await self._update_access_count(memory.id)
+            
+            memories.append(memory)
+            
+            if len(memories) >= limit:
+                break
+        
+        return memories
+    
+    async def delete(self, memory_id: str) -> bool:
+        """
+        Delete a specific memory from short-term memory
+        
+        Note: Redis Streams are append-only, so we mark as deleted
+        rather than actually removing (or use XDEL if stream_id known)
+        """
+        # Get stream_id from index
+        stream_id = await self.redis.hget(self.index_key, memory_id)
+        
+        if not stream_id:
+            return False
+        
+        # Delete from stream
+        deleted = await self.redis.xdel(self.stream_key, stream_id)
+        
+        # Remove from index
+        await self.redis.hdel(self.index_key, memory_id)
+        
+        return deleted > 0
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get short-term memory statistics"""
+        # Get stream info
+        stream_info = await self.redis.xinfo_stream(self.stream_key)
+        
+        count = stream_info['length']
+        
+        # Get range of timestamps
+        if count > 0:
+            # Get oldest and newest entries
+            oldest = await self.redis.xrange(self.stream_key, count=1)
+            newest = await self.redis.xrevrange(self.stream_key, count=1)
+            
+            if oldest and newest:
+                oldest_entry = self._parse_stream_entry(oldest[0][1])
+                newest_entry = self._parse_stream_entry(newest[0][1])
+                
+                oldest_timestamp = oldest_entry.timestamp if oldest_entry else None
+                newest_timestamp = newest_entry.timestamp if newest_entry else None
+            else:
+                oldest_timestamp = None
+                newest_timestamp = None
+        else:
+            oldest_timestamp = None
+            newest_timestamp = None
+        
+        # Calculate average importance
+        entries = await self.redis.xrange(self.stream_key, count=100)  # Sample
+        
+        total_importance = 0.0
+        memory_types = {}
+        
+        for _, entry_data in entries:
+            memory = self._parse_stream_entry(entry_data)
+            if memory:
+                total_importance += memory.importance
+                mem_type = memory.memory_type.value
+                memory_types[mem_type] = memory_types.get(mem_type, 0) + 1
+        
+        avg_importance = total_importance / len(entries) if entries else 0
+        
+        return {
+            "tier": "L2_short_term",
+            "count": count,
+            "max_capacity": self.max_items,
+            "utilization": count / self.max_items if self.max_items > 0 else 0,
+            "avg_importance": avg_importance,
+            "oldest_timestamp": oldest_timestamp,
+            "newest_timestamp": newest_timestamp,
+            "age_hours": (time.time() - oldest_timestamp) / 3600 if oldest_timestamp else 0,
+            "memory_types": memory_types,
+            "ttl_hours": self.ttl_hours
+        }
+    
+    async def get_time_range(self, start_time: float, end_time: float) -> List[MemoryItem]:
+        """
+        Get all memories within a specific time range
+        
+        Args:
+            start_time: Start timestamp
+            end_time: End timestamp
+            
+        Returns:
+            List of memories in time range
+        """
+        memories = []
+        
+        # Read entire stream
+        entries = await self.redis.xrange(self.stream_key)
+        
+        for _, entry_data in entries:
+            memory = self._parse_stream_entry(entry_data)
+            
+            if memory and start_time <= memory.timestamp <= end_time:
+                memories.append(memory)
+        
+        # Sort by timestamp
+        memories.sort(key=lambda m: m.timestamp)
+        
+        return memories
+    
+    async def get_conversation_flow(self, hours: int = 24) -> List[MemoryItem]:
+        """
+        Get conversation flow for the last N hours
+        
+        This reconstructs the sequence of interactions
+        
+        Args:
+            hours: How many hours back to look
+            
+        Returns:
+            Ordered list of episodic memories
+        """
+        cutoff_time = time.time() - (hours * 3600)
+        
+        memories = await self.retrieve("*", limit=self.max_items, 
+                                      filters={'time_range_hours': hours})
+        
+        # Filter to episodic only (conversations)
+        episodic = [m for m in memories if m.memory_type == MemoryType.EPISODIC]
+        
+        # Sort chronologically (oldest first for conversation flow)
+        episodic.sort(key=lambda m: m.timestamp)
+        
+        return episodic
+    
+    async def _parse_stream_entry(self, entry_data: Dict) -> Optional[MemoryItem]:
+        """Parse Redis Stream entry into MemoryItem"""
+        try:
+            return MemoryItem(
+                content=entry_data.get(b'content', b'').decode('utf-8'),
+                memory_type=MemoryType(entry_data.get(b'memory_type', b'episodic').decode('utf-8')),
+                timestamp=float(entry_data.get(b'timestamp', 0)),
+                importance=float(entry_data.get(b'importance', 0.5)),
+                metadata=json.loads(entry_data.get(b'metadata', b'{}').decode('utf-8')),
+                access_count=int(entry_data.get(b'access_count', 0)),
+                last_accessed=float(entry_data.get(b'last_accessed', 0)) if entry_data.get(b'last_accessed') else None,
+                id=entry_data.get(b'memory_id', b'').decode('utf-8'),
+                source_module=entry_data.get(b'source_module', b'').decode('utf-8') or None,
+                source_tier="L2"
+            )
+        except Exception as e:
+            # Log error and return None
+            return None
+    
+    async def _update_access_count(self, memory_id: str) -> None:
+        """
+        Update access count for a memory
+        
+        Since streams are append-only, we store access counts separately
+        """
+        access_key = f"{self.index_key}:access:{memory_id}"
+        await self.redis.incr(access_key)
+        await self.redis.expire(access_key, self.ttl)
+    
+    async def _prune_old_entries(self) -> int:
+        """
+        Prune entries older than TTL
+        
+        Returns:
+            Number of entries pruned
+        """
+        cutoff_time = time.time() - self.ttl
+        cutoff_ms = int(cutoff_time * 1000)
+        
+        # Get oldest entries
+        entries = await self.redis.xrange(self.stream_key, count=100)
+        
+        pruned = 0
+        for stream_id, entry_data in entries:
+            # Parse timestamp from entry
+            memory = self._parse_stream_entry(entry_data)
+            
+            if memory and memory.timestamp < cutoff_time:
+                # Delete this entry
+                await self.redis.xdel(self.stream_key, stream_id)
+                await self.redis.hdel(self.index_key, memory.id)
+                pruned += 1
+            else:
+                # Entries are ordered, so once we hit a recent one, stop
+                break
+        
+        return pruned
+    
+    async def health_check(self) -> bool:
+        """Check if Redis Streams are accessible"""
+        try:
+            await self.redis.ping()
+            # Try to get stream info
+            await self.redis.xinfo_stream(self.stream_key)
+            self.is_healthy = True
+            return True
+        except redis.ResponseError:
+            # Stream doesn't exist yet, that's ok
+            self.is_healthy = True
+            return True
+        except Exception as e:
+            self.is_healthy = False
+            return False
+    
+    def should_store_in_tier(self, memory: MemoryItem) -> bool:
+        """
+        Short-term memory stores memories that:
+        - Are less than 24 hours old
+        - Have importance > 0.3 (filter out trivial stuff)
+        """
+        age_hours = (time.time() - memory.timestamp) / 3600
+        return age_hours < self.ttl_hours and memory.importance > 0.3

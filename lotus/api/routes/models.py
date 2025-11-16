@@ -7,7 +7,7 @@ Model management and information endpoints.
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import ModelsResponse, ModelInfo
-from ..main import get_adapter
+from ..adapter import get_adapter
 from ...lib.logging import get_logger
 
 

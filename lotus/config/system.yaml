@@ -24,8 +24,8 @@ modules:
 
 # Personality Configuration
 personality:
-  name: "ash"
-  style: "helpful"
+  name: "AetherAI"
+  style: "helpful, concise, and professional"
 
 # Logging
 logging:

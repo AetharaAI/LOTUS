@@ -7,7 +7,7 @@ Health checks, metrics, and system status.
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import HealthResponse
-from ..main import get_adapter
+from ..adapter import get_adapter
 from ...lib.logging import get_logger
 
 

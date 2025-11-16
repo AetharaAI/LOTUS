@@ -20,9 +20,9 @@ from typing import Dict, List, Any, Optional, AsyncIterator
 from dataclasses import dataclass
 from enum import Enum
 
-from lotus.lib.module import BaseModule
-from lotus.lib.decorators import on_event, tool
-from lotus.lib.providers import (
+from lib.module import BaseModule
+from lib.decorators import on_event, tool
+from lib.providers import (
     AnthropicProvider, OpenAIProvider, 
     GoogleProvider, OllamaProvider,
     ProviderError, ProviderResponse

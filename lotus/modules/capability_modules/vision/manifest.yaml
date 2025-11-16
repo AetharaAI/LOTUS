@@ -1,0 +1,72 @@
+name: vision
+version: 1.0.0
+type: capability
+priority: high
+description: Computer vision and visual analysis capabilities for LOTUS
+author: AetherPro AI
+license: MIT
+
+capabilities:
+  - screenshot_analysis
+  - ocr
+  - ui_element_detection
+  - visual_qa
+  - screen_reading
+
+subscriptions:
+  - pattern: vision.analyze_screen
+    description: Analyze current screen/screenshot
+  - pattern: vision.read_text
+    description: Extract text from image (OCR)
+  - pattern: vision.detect_ui
+    description: Detect UI elements in screenshot
+  - pattern: perception.screen_capture
+    description: Respond to screen capture events
+
+publications:
+  - event: vision.analysis_complete
+    description: Screen analysis results
+  - event: vision.text_extracted
+    description: OCR results
+  - event: vision.ui_detected
+    description: UI element detection results
+
+dependencies:
+  modules:
+    - providers  # Need vision-capable LLM
+  system: []
+  packages:
+    - pillow  # Image processing
+    - base64  # Image encoding
+
+config:
+  vision_provider: anthropic  # Claude 3.5 Sonnet best for vision
+  fallback_provider: openai   # GPT-4V as fallback
+  max_image_size: 5242880     # 5MB max
+  image_format: png
+  compress_images: true
+  analysis:
+    detail_level: high
+    include_ocr: true
+    detect_ui: true
+
+tools:
+  - name: analyze_screenshot
+    description: Analyze a screenshot with AI vision
+    parameters:
+      - image_path: str
+      - query: Optional[str]
+  - name: read_screen_text
+    description: Extract all text from screenshot
+    parameters:
+      - image_path: str
+  - name: detect_buttons
+    description: Find clickable UI elements
+    parameters:
+      - image_path: str
+
+health:
+  check_interval: 300
+  checks:
+    - vision_provider_available
+    - image_processing_ready

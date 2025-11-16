@@ -247,7 +247,9 @@ class Nucleus:
         
         module_dirs = [
             base_path / "modules" / "core_modules",
+            base_path / "modules" / "capability_modules",  # Actual directory name
             base_path / "modules" / "capabilities",
+            base_path / "modules" / "integration_modules",  # Actual directory name
             base_path / "modules" / "integrations",
             base_path / "modules" / "personalities"
         ]

@@ -1,0 +1,219 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100vh;
+  background-color: #0a0a0f;
+  color: #e2e8f0;
+  font-family: 'Outfit', 'Inter', sans-serif;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1625;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+}
+
+/* Purple Gradient Text */
+.text-gradient-aether {
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Pulsing Glow Animation */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 20px rgba(109, 40, 217, 0.8),
+                 0 0 40px rgba(109, 40, 217, 0.4);
+  }
+  50% {
+    text-shadow: 0 0 40px rgba(109, 40, 217, 1),
+                 0 0 80px rgba(109, 40, 217, 0.6);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Gradient Borders */
+.border-gradient-aether {
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+
+.border-gradient-aether::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  border-radius: inherit;
+  z-index: -1;
+}
+
+/* Button Hover Glow */
+.btn-glow {
+  transition: all 0.3s ease;
+}
+
+.btn-glow:hover {
+  box-shadow: 0 0 20px rgba(109, 40, 217, 0.6),
+              0 0 40px rgba(109, 40, 217, 0.3);
+}
+
+/* Message Animations */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* Thinking Block Pulse */
+@keyframes thinking-pulse {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-thinking {
+  animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+
+/* Code Block Styling */
+pre {
+  background-color: #1a1625 !important;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid #312e81;
+}
+
+code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+}
+
+/* Inline code */
+:not(pre) > code {
+  background-color: #1a1625;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  color: #8b5cf6;
+}
+
+/* Markdown Links */
+a {
+  color: #8b5cf6;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+a:hover {
+  color: #6d28d9;
+  text-decoration: underline;
+}
+
+/* Input Focus Glow */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(109, 40, 217, 0.5);
+}
+
+/* Loading Spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Message Bubble Animations */
+.message-user {
+  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+  margin-left: auto;
+}
+
+.message-assistant {
+  background-color: #1a1625;
+  border: 1px solid #312e81;
+}
+
+/* Model Badge */
+.model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.2), rgba(139, 92, 246, 0.2));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+/* Sidebar Animation */
+.sidebar-enter {
+  transform: translateX(-100%);
+}
+
+.sidebar-enter-active {
+  transform: translateX(0);
+  transition: transform 0.3s ease-out;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+  }
+}

@@ -1,57 +1,48 @@
 # UnityKernel System Configuration
 
-kernel:
-  name: "unity_kernel"
-  version: "0.1.0"
-  log_level: "INFO"
-  hot_reload_config: true
+# Redis Configuration (for event persistence)
+redis:
+  host: localhost
+  port: 55678  # Using high random port to avoid conflicts
+  db: 0
+  enabled: true
 
 # Event Bus Configuration
 event_bus:
-  # Redis URL (optional - in-memory fallback if not set)
-  # redis_url: "redis://localhost:6379/0"
-  redis_url: null
+  max_subscribers: 1000
+  pattern_matching: true
+  wildcard_support: true
 
-  # Enable Redis Streams for persistence
-  enable_streams: true
-
-# Priority Processor Configuration
-priority_processor:
+# Priority Queue Configuration
+priority_queue:
   workers:
-    critical: 4    # Safety-critical tasks
-    high: 8        # Time-sensitive tasks
-    normal: 16     # Standard tasks
-    low: 4         # Background tasks
-    deferred: 2    # Idle-time tasks
+    critical: 4
+    high: 8
+    normal: 16
+    low: 4
+    deferred: 2
+  queue_sizes:
+    critical: 100
+    high: 500
+    normal: 1000
+    low: 500
+    deferred: 200
 
-# Module System Configuration
+# Module System
 modules:
-  # Auto-discover modules on boot
   auto_discover: true
+  base_path: "./modules"
+  hot_reload: true
+  watch_interval: 5.0
 
-  # Paths to search for modules
-  discovery_paths:
-    - "./modules"
-    - "./modules/examples"
-
-  # Auto-load all discovered modules
-  auto_load_core: true
-
-  # Enable hot-reload for modules
-  hot_reload: false  # Set true in development
-
-# Health Monitoring Configuration
+# Health Monitor
 health:
-  # Health check interval (seconds)
-  check_interval: 30
+  enabled: true
+  check_interval: 10.0
+  restart_failed: true
+  max_restarts: 3
 
-  # Threshold for degraded state (0.0-1.0)
-  # 0.7 = consider degraded if <70% modules healthy
-  degraded_threshold: 0.7
-
-  # Auto-restart failed modules
-  restart_failed_modules: true
-
-  # Resource thresholds for alerts
-  cpu_alert_threshold: 90       # Percent
-  memory_alert_threshold: 4096  # MB
+# Logging
+logging:
+  level: "INFO"
+  format: "detailed"

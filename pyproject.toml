@@ -14,7 +14,14 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "aioredis>=2.0.0",
 
-    # Optional dependencies (LLM providers)
+    # API Layer (FastAPI)
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "python-multipart>=0.0.6",
+    "gunicorn>=21.2.0",
+
+    # LLM providers
     "anthropic>=0.18.0",
     "openai>=1.0.0",
     "httpx>=0.25.0",
@@ -25,7 +32,7 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
 
-    # Optional utilities
+    # Vision utilities
     "mss>=9.0.0",
     "pillow>=10.0.0",
     "pytesseract>=0.3.10",

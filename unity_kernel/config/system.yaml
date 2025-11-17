@@ -1,0 +1,48 @@
+# UnityKernel System Configuration
+
+# Redis Configuration (for event persistence)
+redis:
+  host: localhost
+  port: 55678  # Using high random port to avoid conflicts
+  db: 0
+  enabled: true
+
+# Event Bus Configuration
+event_bus:
+  max_subscribers: 1000
+  pattern_matching: true
+  wildcard_support: true
+
+# Priority Queue Configuration
+priority_queue:
+  workers:
+    critical: 4
+    high: 8
+    normal: 16
+    low: 4
+    deferred: 2
+  queue_sizes:
+    critical: 100
+    high: 500
+    normal: 1000
+    low: 500
+    deferred: 200
+
+# Module System
+modules:
+  auto_discover: true
+  base_path: "./modules"
+  hot_reload: true
+  watch_interval: 5.0
+
+# Health Monitor
+health:
+  enabled: true
+  check_interval: 10.0
+  restart_failed: true
+  max_restarts: 3
+
+# Logging
+logging:
+  level: "INFO"
+  format: "detailed"

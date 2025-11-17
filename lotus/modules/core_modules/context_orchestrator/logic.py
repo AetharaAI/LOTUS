@@ -40,6 +40,8 @@ class ContextOrchestrator(BaseModule):
 
     def __init__(self, name: str, metadata: Dict, message_bus: Any, config: Any, logger: logging.Logger):
         super().__init__(name, metadata, message_bus, config, logger)
+        # Store name for later use
+        self.name = name
         self.logger = logging.getLogger(f"lotus.module.{self.name}") # Ensure dedicated logger
 
         self.last_reasoning_trigger_time: Dict[str, float] = {} # {content_hash: timestamp}

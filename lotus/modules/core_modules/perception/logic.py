@@ -27,6 +27,13 @@ try:
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
+    # Create dummy classes when watchdog is unavailable
+    class FileSystemEventHandler:
+        pass
+    class FileSystemEvent:
+        pass
+    class Observer:
+        pass
 
 try:
     import pyperclip
@@ -37,36 +44,36 @@ except ImportError:
 
 class FileChangeHandler(FileSystemEventHandler):
     """Handler for file system events"""
-    
+
     def __init__(self, module: 'PerceptionModule'):
         self.module = module
         self.last_events: Dict[str, float] = {}
         self.debounce = module.config.get("perception.file_watching.debounce_seconds", 2)
-        
+
     def on_created(self, event: FileSystemEvent):
         if not event.is_directory:
             self._handle_event("created", event.src_path)
-    
+
     def on_modified(self, event: FileSystemEvent):
         if not event.is_directory:
             self._handle_event("modified", event.src_path)
-    
+
     def on_deleted(self, event: FileSystemEvent):
         if not event.is_directory:
             self._handle_event("deleted", event.src_path)
-    
+
     def _handle_event(self, event_type: str, path: str):
         """Debounce and handle file events"""
         now = time.time()
         key = f"{event_type}:{path}"
-        
+
         # Check debounce
         if key in self.last_events:
             if now - self.last_events[key] < self.debounce:
                 return
-        
+
         self.last_events[key] = now
-        
+
         # Queue event for async processing
         asyncio.create_task(
             self.module._handle_file_event(event_type, path)

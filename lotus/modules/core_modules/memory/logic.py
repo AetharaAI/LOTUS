@@ -109,9 +109,8 @@ class MemoryModule(BaseModule):
         else:
             self.L3 = LongTermMemory(
                 chroma_client,
-                embedder,
                 collection_name=self.config.get("memory.long_term.collection_name", "lotus_memories"),
-                embedding_model=self.config.get("memory.long_term.embedding_model", "all-MiniLM-L6-v2")
+                embedder=embedder
             )
         
         # Initialize L4: Persistent Memory (PostgreSQL)

@@ -13,6 +13,8 @@ import { MessageList } from './MessageList';
 import { InputBar } from './InputBar';
 import { Logo } from '../shared/Logo';
 import { ComplianceFooter } from '../shared/ComplianceFooter';
+import { SettingsPanel } from '../settings/SettingsPanel';
+import { ProfileButton } from '../auth/ProfileButton';
 
 export function ChatInterface() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -87,6 +89,12 @@ export function ChatInterface() {
         {/* Compliance Footer */}
         <ComplianceFooter />
       </div>
+
+      {/* Settings Panel (floating) */}
+      <SettingsPanel />
+
+      {/* Profile/Login Button (bottom-left) */}
+      <ProfileButton />
     </div>
   );
 }

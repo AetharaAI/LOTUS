@@ -1,6 +1,5 @@
 {
   "buildCommand": "cd aetherai-ui && npm run build",
-  "outputDirectory": "aetherai-ui/.next",
   "installCommand": "cd aetherai-ui && npm install",
   "framework": "nextjs"
 }

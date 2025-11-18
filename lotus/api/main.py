@@ -69,7 +69,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://aetherai.aetherpro.tech",
+        "https://aether.aetherpro.tech",
         "https://*.vercel.app"  # Vercel preview deployments
     ],
     allow_credentials=True,

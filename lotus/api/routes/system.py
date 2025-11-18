@@ -7,7 +7,7 @@ Health checks, metrics, and system status.
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import HealthResponse
-from ..main import get_adapter
+from ..adapter import get_adapter
 from ...lib.logging import get_logger
 
 
@@ -97,3 +97,46 @@ async def get_version():
         "name": "LOTUS API",
         "motto": "The American Standard for Sovereign AI Infrastructure 🇺🇸"
     }
+
+
+@router.get("/lotus/status")
+async def get_lotus_status():
+    """
+    Get complete LOTUS system status
+
+    Returns detailed information about:
+    - Nucleus health and uptime
+    - All loaded modules and their status
+    - Infrastructure (Redis, Memory tiers, PostgreSQL, ChromaDB)
+    - Usage statistics
+    - Memory tier stats (L1-L4)
+    """
+    try:
+        adapter = get_adapter()
+        status = adapter.get_system_status()
+        return status
+
+    except Exception as e:
+        logger.error(f"Get LOTUS status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/lotus/modules")
+async def get_lotus_modules():
+    """
+    Get all loaded LOTUS modules
+
+    Returns module names, types, versions, and health status
+    """
+    try:
+        adapter = get_adapter()
+        status = adapter.get_system_status()
+
+        return {
+            "modules": status.get("modules", {}),
+            "total_modules": len(status.get("modules", {}))
+        }
+
+    except Exception as e:
+        logger.error(f"Get LOTUS modules error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

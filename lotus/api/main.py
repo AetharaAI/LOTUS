@@ -11,16 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .routes import chat, models, system, memory
-from .services.lotus_adapter import LOTUSAdapter
+from .services.nucleus_adapter import NucleusAdapter
+from .adapter import set_adapter
 from ..lib.config import Config
 from ..lib.logging import get_logger
+import os
 
 
 logger = get_logger("lotus.api")
-
-
-# Global adapter instance
-adapter: LOTUSAdapter = None
 
 
 @asynccontextmanager
@@ -33,23 +31,24 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting LOTUS API...")
 
-    global adapter
+    # Get user tier from environment (default: basic)
+    user_tier = os.getenv("LOTUS_TIER", "basic").lower()
+    logger.info(f"User tier: {user_tier}")
 
-    # Load configuration
-    config = Config("config/system.yaml")
-    logger.info("Configuration loaded")
-
-    # Initialize LOTUS adapter
-    adapter = LOTUSAdapter(config)
+    # Initialize Nucleus adapter
+    adapter = NucleusAdapter("config/system.yaml", user_tier=user_tier)
     await adapter.initialize()
-    logger.info("LOTUS adapter initialized")
 
-    logger.info("✅ LOTUS API ready!")
+    # Set global adapter instance
+    set_adapter(adapter)
+
+    logger.info(f"✅ LOTUS API ready (tier: {user_tier})!")
 
     yield
 
     # Shutdown
     logger.info("📴 Shutting down LOTUS API...")
+    await adapter.shutdown()
     logger.info("👋 LOTUS API shutdown complete")
 
 
@@ -129,10 +128,3 @@ async def general_exception_handler(request: Request, exc: Exception):
             "detail": str(exc)
         }
     )
-
-
-def get_adapter() -> LOTUSAdapter:
-    """Get the global adapter instance"""
-    if adapter is None:
-        raise RuntimeError("LOTUS adapter not initialized")
-    return adapter

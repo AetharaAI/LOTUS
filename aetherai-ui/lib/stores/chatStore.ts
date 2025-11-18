@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export interface Message {
   id: string;
@@ -41,16 +42,18 @@ interface ChatState {
   deleteConversation: (conversationId: string) => void;
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
-  // Initial state
-  messages: [],
-  currentConversationId: null,
-  isStreaming: false,
-  currentModel: 'auto',
-  conversations: [],
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      messages: [],
+      currentConversationId: null,
+      isStreaming: false,
+      currentModel: 'auto',
+      conversations: [],
 
-  // Actions
-  addMessage: (message) => {
+      // Actions
+      addMessage: (message) => {
     const newMessage: Message = {
       ...message,
       id: crypto.randomUUID(),
@@ -125,4 +128,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       get().clearMessages();
     }
   },
-}));
+    }),
+    {
+      name: 'aetherai-chat-session',
+      // Store only messages and model for free tier session memory
+      partialize: (state) => ({
+        messages: state.messages,
+        currentModel: state.currentModel,
+        currentConversationId: state.currentConversationId
+      })
+    }
+  )
+);

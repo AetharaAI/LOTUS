@@ -20,11 +20,37 @@ memory:
 
 providers:
   anthropic:
-    enabled: false
+    enabled: true
+    api_key: ${ANTHROPIC_API_KEY}
   openai:
-    enabled: false
+    enabled: true
+    api_key: ${OPENAI_API_KEY}
+  xai:
+    enabled: true
+    api_key: ${XAI_API_KEY}
   ollama:
     enabled: false
+
+# Model definitions for AetherAI Triad
+models:
+  apriel:
+    provider: openai
+    base_url: http://localhost:8001/v1
+    api_key: dummy
+    model_name: apriel-1.5
+    description: Self-hosted Apriel model for general tasks
+
+  grok:
+    provider: xai
+    api_key: ${XAI_API_KEY}
+    model_name: grok-beta
+    description: xAI Grok for advanced reasoning
+
+  claude:
+    provider: anthropic
+    api_key: ${ANTHROPIC_API_KEY}
+    model_name: claude-sonnet-4-20250514
+    description: Anthropic Claude for vision and complex tasks
 
 system:
   personality: ash

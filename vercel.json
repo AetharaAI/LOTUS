@@ -1,5 +1,0 @@
-{
-  "buildCommand": "cd aetherai-ui && npm run build",
-  "installCommand": "cd aetherai-ui && npm install",
-  "framework": "nextjs"
-}

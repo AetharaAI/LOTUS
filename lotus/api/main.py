@@ -69,6 +69,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:3001",
         "https://aether.aetherpro.tech",
+        "https://aetherpro.tech",
         "https://*.vercel.app"  # Vercel preview deployments
     ],
     allow_credentials=True,

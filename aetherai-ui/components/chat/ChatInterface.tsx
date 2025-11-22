@@ -3,8 +3,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Draggable from 'react-draggable';
 import { Terminal, Activity, Minimize2, Maximize2, Send, Cpu, Zap } from 'lucide-react';
-import { streamChat } from '@/lib/api/streaming'; // YOUR CUSTOM CLIENT
-import { Message } from '@/types/chat'; // Assuming you have this, or use any
+import { streamChat } from '@/lib/api/streaming';
+
+// --- TYPE DEFINITION (Fixed locally so build passes) ---
+type Message = {
+  role: string;
+  content: string;
+};
 
 export default function ChatInterface() {
   // -- STATE --
@@ -15,7 +20,7 @@ export default function ChatInterface() {
   // -- THE DISPLAY BUFFERS --
   const [thinkingBuffer, setThinkingBuffer] = useState('');
   const [contentBuffer, setContentBuffer] = useState('');
-  const [conversation, setConversation] = useState<{role: string, content: string}[]>([]);
+  const [conversation, setConversation] = useState<Message[]>([]);
 
   // -- REFS FOR AUTO-SCROLL --
   const thinkRef = useRef<HTMLDivElement>(null);

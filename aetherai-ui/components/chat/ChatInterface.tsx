@@ -1,100 +1,159 @@
-/**
- * Chat Interface Component
- *
- * Main container that combines Sidebar, MessageList, and InputBar.
- */
-
 'use client';
 
-import { useState } from 'react';
-import { useChatStore } from '@/lib/stores/chatStore';
-import { Sidebar } from './Sidebar';
-import { MessageList } from './MessageList';
-import { InputBar } from './InputBar';
-import { Logo } from '../shared/Logo';
-import { ComplianceFooter } from '../shared/ComplianceFooter';
-import { SettingsPanel } from '../settings/SettingsPanel';
-import { ProfileButton } from '../auth/ProfileButton';
+import React, { useState, useRef, useEffect } from 'react';
+import Draggable from 'react-draggable';
+import { Terminal, Activity, Minimize2, Maximize2, Send, Cpu, Zap } from 'lucide-react';
+import { streamChat } from '@/lib/api/streaming'; // YOUR CUSTOM CLIENT
+import { Message } from '@/types/chat'; // Assuming you have this, or use any
 
-export function ChatInterface() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { messages, isStreaming } = useChatStore();
+export default function ChatInterface() {
+  // -- STATE --
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [input, setInput] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  
+  // -- THE DISPLAY BUFFERS --
+  const [thinkingBuffer, setThinkingBuffer] = useState('');
+  const [contentBuffer, setContentBuffer] = useState('');
+  const [conversation, setConversation] = useState<{role: string, content: string}[]>([]);
+
+  // -- REFS FOR AUTO-SCROLL --
+  const thinkRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (thinkRef.current) thinkRef.current.scrollTop = thinkRef.current.scrollHeight;
+    if (contentRef.current) contentRef.current.scrollTop = contentRef.current.scrollHeight;
+  }, [thinkingBuffer, contentBuffer]);
+
+  // -- HANDLER --
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isStreaming) return;
+
+    const userMsg = input;
+    setInput('');
+    setIsStreaming(true);
+    setThinkingBuffer(''); // Reset voltage
+    setContentBuffer('');  // Reset amps
+
+    // Add user message to history immediately
+    const newHistory = [...conversation, { role: 'user', content: userMsg }];
+    setConversation(newHistory);
+
+    try {
+      await streamChat(
+        {
+          messages: newHistory,
+          model: 'apriel-1.5-15b-thinker',
+          temperature: 0.3
+        },
+        {
+          // ROUTE 1: THE THINKING MONITOR
+          onThinking: (chunk) => {
+            setThinkingBuffer(prev => prev + chunk);
+          },
+          
+          // ROUTE 2: THE FINAL OUTPUT
+          onContent: (chunk) => {
+            setContentBuffer(prev => prev + chunk);
+          },
+
+          onDone: () => {
+            setIsStreaming(false);
+            // Commit the transaction to history
+            setConversation(prev => [...prev, { role: 'assistant', content: contentBuffer }]);
+          },
+          
+          onError: (err) => {
+            console.error("Breaker Tripped:", err);
+            setIsStreaming(false);
+          }
+        }
+      );
+    } catch (error) {
+      setIsStreaming(false);
+    }
+  };
 
   return (
-    <div className="flex h-screen bg-aether-bg-dark">
-      {/* Sidebar - Desktop */}
-      <div className="hidden md:block w-64 shrink-0">
-        <Sidebar />
-      </div>
-
-      {/* Sidebar - Mobile (Overlay) */}
-      {isSidebarOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/50 z-40 md:hidden"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-
-          {/* Sidebar */}
-          <div className="fixed inset-y-0 left-0 w-64 z-50 md:hidden animate-slide-in">
-            <Sidebar onClose={() => setIsSidebarOpen(false)} />
-          </div>
-        </>
-      )}
-
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="shrink-0 bg-aether-bg-card border-b border-aether-indigo-light px-4 py-3">
-          <div className="flex items-center justify-between max-w-4xl mx-auto">
-            {/* Mobile menu button */}
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="md:hidden p-2 text-aether-text-muted hover:text-aether-text transition-colors"
-            >
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M3 12H21M3 6H21M3 18H21"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-
-            {/* Logo */}
-            <div className="flex-1 flex justify-center md:justify-start">
-              <Logo size="sm" />
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      {/* POINTER EVENTS AUTO allows clicking the widget, but passing clicks through the empty space */}
+      <Draggable handle=".drag-handle" bounds="parent">
+        <div className="pointer-events-auto absolute bottom-10 right-10 w-[500px] flex flex-col shadow-2xl shadow-black/50 rounded-lg border border-slate-700 bg-slate-950 text-slate-200 overflow-hidden">
+          
+          {/* --- HEADER (DRAG HANDLE) --- */}
+          <div className="drag-handle h-10 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 cursor-move select-none">
+            <div className="flex items-center gap-2 text-blue-400">
+              <Activity size={16} className={isStreaming ? "animate-pulse text-green-400" : ""} />
+              <span className="font-mono text-xs font-bold tracking-widest">APRIEL // L40S-NODE</span>
             </div>
-
-            {/* Spacer for mobile centering */}
-            <div className="md:hidden w-10" />
+            <div className="flex items-center gap-2">
+                {/* Status Lights */}
+                <div className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-green-500' : 'bg-slate-600'}`} />
+                <button onClick={() => setIsExpanded(!isExpanded)} className="hover:text-white ml-2">
+                {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                </button>
+            </div>
           </div>
-        </header>
 
-        {/* Messages */}
-        <MessageList messages={messages} isStreaming={isStreaming} />
+          {/* --- EXPANDED VIEW --- */}
+          {isExpanded && (
+            <div className="flex flex-col h-[600px]">
+              
+              {/* ZONE 1: THE THINKING MONITOR (High Voltage) */}
+              <div className="h-1/3 bg-slate-950 border-b border-slate-800 p-3 overflow-y-auto font-mono text-xs text-amber-500/80" ref={thinkRef}>
+                <div className="flex items-center gap-2 text-slate-500 mb-2 sticky top-0 bg-slate-950/90 backdrop-blur">
+                    <Cpu size={12} />
+                    <span className="uppercase tracking-wider">Internal Logic Chain</span>
+                </div>
+                {thinkingBuffer ? (
+                    <pre className="whitespace-pre-wrap font-mono">{thinkingBuffer}</pre>
+                ) : (
+                    <span className="text-slate-700 italic">Waiting for reasoning stream...</span>
+                )}
+              </div>
 
-        {/* Input Bar */}
-        <InputBar />
+              {/* ZONE 2: THE OUTPUT MONITOR (Amperage) */}
+              <div className="flex-1 bg-slate-900/50 p-4 overflow-y-auto scrollbar-thin" ref={contentRef}>
+                {conversation.map((msg, i) => (
+                    <div key={i} className={`mb-4 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                        <div className={`inline-block p-2 rounded ${msg.role === 'user' ? 'bg-blue-900/30 text-blue-100 border border-blue-800' : 'text-slate-200'}`}>
+                            {msg.content}
+                        </div>
+                    </div>
+                ))}
+                
+                {/* Live Streaming Content */}
+                {contentBuffer && (
+                    <div className="text-left">
+                        <div className="inline-block text-slate-200 animate-pulse-fast">
+                            {contentBuffer}
+                            <span className="inline-block w-2 h-4 bg-blue-500 ml-1 align-middle animate-pulse"/>
+                        </div>
+                    </div>
+                )}
+              </div>
 
-        {/* Compliance Footer */}
-        <ComplianceFooter />
-      </div>
+              {/* ZONE 3: INPUT TERMINAL */}
+              <form onSubmit={handleSubmit} className="h-14 bg-slate-950 border-t border-slate-800 flex items-center px-3 gap-2">
+                <Terminal size={16} className="text-blue-500" />
+                <input 
+                    className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-mono text-white placeholder-slate-600"
+                    placeholder="Enter command sequence..."
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    autoFocus
+                />
+                <button type="submit" disabled={isStreaming} className="text-slate-400 hover:text-blue-400 disabled:opacity-30">
+                    <Zap size={18} />
+                </button>
+              </form>
 
-      {/* Settings Panel (floating) */}
-      <SettingsPanel />
-
-      {/* Profile/Login Button (bottom-left) */}
-      <ProfileButton />
+            </div>
+          )}
+        </div>
+      </Draggable>
     </div>
   );
 }

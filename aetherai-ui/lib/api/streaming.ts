@@ -2,9 +2,10 @@
  * SSE Streaming Client
  *
  * Handles Server-Sent Events for real-time chat streaming.
+ * Routes through Next.js API route for secure authentication.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://aetherpro.tech';
+const API_URL = '/api';
 
 export interface StreamCallbacks {
   onThinking?: (thinking: string) => void;
@@ -31,14 +32,12 @@ export async function streamChat(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        ...request,
-        stream: true,
-      }),
+      body: JSON.stringify(request),
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
 
     const reader = response.body?.getReader();
@@ -53,6 +52,7 @@ export async function streamChat(
       const { done, value } = await reader.read();
 
       if (done) {
+        callbacks.onDone?.();
         break;
       }
 
@@ -116,7 +116,7 @@ export async function streamChat(
 export async function chatCompletion(
   request: ChatRequest
 ): Promise<{ content: string; model: string }> {
-  const response = await fetch(`${API_URL}/api/chat/completions`, {
+  const response = await fetch(`${API_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -128,7 +128,8 @@ export async function chatCompletion(
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
   }
 
   return response.json();

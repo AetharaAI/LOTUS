@@ -4,7 +4,7 @@
  * Handles Server-Sent Events for real-time chat streaming.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://aetherpro.tech';
 
 export interface StreamCallbacks {
   onThinking?: (thinking: string) => void;

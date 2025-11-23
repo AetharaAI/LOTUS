@@ -8,7 +8,7 @@
 
 import { Message as MessageType } from '@/lib/stores/chatStore';
 import { MarkdownRenderer } from '../shared/MarkdownRenderer';
-import { ThinkingBlock } from './ThinkingBlock';
+import { EnhancedThinkingBlock } from './EnhancedThinkingBlock';
 import { ModelBadge } from '../shared/ModelBadge';
 
 interface MessageProps {
@@ -45,7 +45,12 @@ export function Message({ message, className = '' }: MessageProps) {
 
           {/* Thinking block (only for assistant) */}
           {!isUser && message.thinking && (
-            <ThinkingBlock content={message.thinking} className="mb-3" />
+            <EnhancedThinkingBlock
+              rawContent={message.thinking}
+              isStreaming={false}
+              tokenBudget={512}
+              className="mb-3"
+            />
           )}
 
           {/* Message content */}

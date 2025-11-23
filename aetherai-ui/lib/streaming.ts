@@ -11,6 +11,8 @@ export interface StreamCallbacks {
   onThinking?: (thinking: string) => void;
   onContent?: (chunk: string) => void;
   onModel?: (model: string, tokensUsed?: number) => void;
+  onToolUse?: (data: { tool: string; query: string; status: string; results?: any[] }) => void;
+  onToolResult?: (data: { tool: string; query: string; results: any[]; status: string }) => void;
   onError?: (error: string) => void;
   onDone?: () => void;
 }
@@ -90,6 +92,24 @@ export async function streamChat(
 
                 case 'model':
                   callbacks.onModel?.(parsed.model, parsed.tokens_used);
+                  break;
+
+                case 'tool_use':
+                  callbacks.onToolUse?.({
+                    tool: parsed.tool,
+                    query: parsed.query,
+                    status: parsed.status,
+                    results: parsed.results,
+                  });
+                  break;
+
+                case 'tool_result':
+                  callbacks.onToolResult?.({
+                    tool: parsed.tool,
+                    query: parsed.query,
+                    results: parsed.results,
+                    status: parsed.status,
+                  });
                   break;
 
                 case 'error':

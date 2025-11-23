@@ -10,16 +10,19 @@ import { useEffect, useRef } from 'react';
 import { Message as MessageType } from '@/lib/stores/chatStore';
 import { Message } from './Message';
 import { LogoWithTagline } from '../shared/Logo';
+import { ToolUseIndicator } from './ToolUseIndicator';
 
 interface MessageListProps {
   messages: MessageType[];
   isStreaming?: boolean;
+  currentToolUse?: { tool: string; query: string; results?: any[]; isSearching: boolean } | null;
   className?: string;
 }
 
 export function MessageList({
   messages,
   isStreaming = false,
+  currentToolUse = null,
   className = '',
 }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -84,8 +87,18 @@ export function MessageList({
           <Message key={message.id} message={message} />
         ))}
 
+        {/* Tool use indicator - only during streaming */}
+        {isStreaming && currentToolUse && (
+          <ToolUseIndicator
+            tool={currentToolUse.tool}
+            query={currentToolUse.query}
+            results={currentToolUse.results}
+            isSearching={currentToolUse.isSearching}
+          />
+        )}
+
         {/* Streaming indicator */}
-        {isStreaming && (
+        {isStreaming && !currentToolUse && (
           <div className="flex items-center gap-2 text-aether-purple-light mb-4">
             <div className="flex gap-1">
               <span className="animate-pulse">●</span>

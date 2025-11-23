@@ -3,9 +3,10 @@
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  showText?: boolean;
 }
 
-export function Logo({ size = 'md', className = '' }: LogoProps) {
+export function Logo({ size = 'md', className = '', showText = true }: LogoProps) {
   const sizeClasses = {
     sm: 'h-8',
     md: 'h-12',
@@ -19,6 +20,11 @@ export function Logo({ size = 'md', className = '' }: LogoProps) {
         alt="AetherAI"
         className={`${sizeClasses[size]} w-auto`}
       />
+      {showText && (
+        <span className="text-xl font-bold bg-gradient-to-r from-aether-purple-light to-aether-orange bg-clip-text text-transparent">
+          AetherAI
+        </span>
+      )}
     </div>
   );
 }

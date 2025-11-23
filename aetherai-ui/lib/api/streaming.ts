@@ -26,7 +26,7 @@ export async function streamChat(
   callbacks: StreamCallbacks
 ): Promise<void> {
   try {
-    const response = await fetch(`${API_URL}/api/chat/completions`, {
+    const response = await fetch(`${API_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

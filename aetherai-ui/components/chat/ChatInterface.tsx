@@ -9,6 +9,13 @@ import { streamChat } from '@/lib/streaming';
 
 export default function ChatInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentToolUse, setCurrentToolUse] = useState<{
+    tool: string;
+    query: string;
+    results?: any[];
+    isSearching: boolean;
+  } | null>(null);
+
   const {
     messages,
     isStreaming,
@@ -66,8 +73,31 @@ export default function ChatInterface() {
             });
           },
 
+          onToolUse: (data: any) => {
+            if (data.tool === 'web_search') {
+              setCurrentToolUse({
+                tool: data.tool,
+                query: data.query,
+                results: data.results,
+                isSearching: data.status === 'searching',
+              });
+            }
+          },
+
+          onToolResult: (data: any) => {
+            if (data.tool === 'web_search') {
+              setCurrentToolUse({
+                tool: data.tool,
+                query: data.query,
+                results: data.results,
+                isSearching: false,
+              });
+            }
+          },
+
           onDone: () => {
             setIsStreaming(false);
+            setCurrentToolUse(null); // Clear tool use on completion
           },
 
           onError: (error: string) => {
@@ -76,6 +106,7 @@ export default function ChatInterface() {
               content: responseContent || `Error: ${error}`,
             });
             setIsStreaming(false);
+            setCurrentToolUse(null);
           },
         }
       );
@@ -151,7 +182,7 @@ export default function ChatInterface() {
         </header>
 
         {/* Messages */}
-        <MessageList messages={messages} isStreaming={isStreaming} />
+        <MessageList messages={messages} isStreaming={isStreaming} currentToolUse={currentToolUse} />
 
         {/* Input */}
         <InputBar onSend={handleSendMessage} disabled={isStreaming} />

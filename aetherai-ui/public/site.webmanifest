@@ -1,6 +1,7 @@
 {
   "name": "AetherAI",
   "short_name": "AetherAI",
+  "description": "The American Standard for Sovereign AI",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
@@ -15,5 +16,6 @@
   ],
   "theme_color": "#1a0b2e",
   "background_color": "#0a0515",
-  "display": "standalone"
+  "display": "standalone",
+  "start_url": "/"
 }

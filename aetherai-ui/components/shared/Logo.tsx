@@ -1,54 +1,38 @@
-/**
- * AetherAI Logo
- *
- * CRITICAL: Logo MUST always pulse - never static!
- * Purple gradient with electrical current effect.
- */
+'use client';
 
 interface LogoProps {
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg';
   className?: string;
 }
 
-export function Logo({ size = 'lg', className = '' }: LogoProps) {
+export function Logo({ size = 'md', className = '' }: LogoProps) {
   const sizeClasses = {
-    sm: 'text-xl',
-    md: 'text-2xl',
-    lg: 'text-4xl',
-    xl: 'text-5xl',
+    sm: 'h-8',
+    md: 'h-12',
+    lg: 'h-16',
   };
 
   return (
-    <div className={`${sizeClasses[size]} ${className}`}>
-      <h1 className="font-bold text-gradient-aether animate-pulse-glow">
+    <div className={`flex items-center gap-3 ${className}`}>
+      <img
+        src="/logo.png"
+        alt="AetherAI"
+        className={`${sizeClasses[size]} w-auto`}
+      />
+    </div>
+  );
+}
+
+export function LogoWithTagline({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flex flex-col items-center ${className}`}>
+      <img src="/logo.png" alt="AetherAI" className="h-24 w-auto mb-4" />
+      <h1 className="text-3xl font-bold bg-gradient-to-r from-aether-purple-light to-aether-orange bg-clip-text text-transparent">
         AetherAI
       </h1>
-    </div>
-  );
-}
-
-/**
- * Logo with tagline
- */
-export function LogoWithTagline() {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <Logo size="xl" />
-      <p className="text-sm text-aether-text-muted text-center">
+      <p className="text-aether-text-muted text-sm mt-2">
         The American Standard for Sovereign AI
       </p>
-    </div>
-  );
-}
-
-/**
- * Compact logo for sidebar
- */
-export function LogoCompact() {
-  return (
-    <div className="flex items-center gap-3">
-      <Logo size="md" />
-      <span className="text-xs text-aether-text-muted">🇺🇸</span>
     </div>
   );
 }

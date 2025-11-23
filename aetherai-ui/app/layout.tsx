@@ -9,28 +9,34 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'AetherAI - The American Standard for Sovereign AI Infrastructure',
-  description:
-    'A sovereign, model-agnostic AI platform built on US infrastructure. Chat with Apriel, Grok-2, and Claude - your data stays on US soil.',
+  title: 'AetherAI - Sovereign AI Platform',
+  description: 'The American Standard for Sovereign AI. Powered by Apriel on US infrastructure.',
   keywords: [
     'AI',
     'sovereign AI',
     'US infrastructure',
     'Apriel',
-    'Grok-2',
-    'Claude',
     'chat',
     'artificial intelligence',
   ],
   authors: [{ name: 'AetherAI' }],
   openGraph: {
     title: 'AetherAI',
-    description: 'The American Standard for Sovereign AI Infrastructure',
+    description: 'The American Standard for Sovereign AI',
     type: 'website',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-48x48.png', sizes: '48x48', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+    other: [
+      { rel: 'icon', url: '/favicon.ico' },
+    ],
   },
+  manifest: '/site.webmanifest',
 };
 
 export const viewport: Viewport = {

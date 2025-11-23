@@ -26,7 +26,7 @@ interface ChatState {
   isStreaming: boolean;
 
   // Model selection
-  currentModel: 'auto' | 'apriel' | 'grok' | 'claude';
+  currentModel: 'apriel' | 'auto';
 
   // Conversations list
   conversations: Conversation[];
@@ -36,7 +36,7 @@ interface ChatState {
   updateLastMessage: (updates: Partial<Message>) => void;
   clearMessages: () => void;
   setIsStreaming: (streaming: boolean) => void;
-  setCurrentModel: (model: 'auto' | 'apriel' | 'grok' | 'claude') => void;
+  setCurrentModel: (model: 'apriel' | 'auto') => void;
   loadConversation: (conversationId: string) => void;
   createNewConversation: () => void;
   deleteConversation: (conversationId: string) => void;

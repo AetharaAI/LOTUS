@@ -102,16 +102,12 @@ export function Sidebar({ className = '', onClose }: SidebarProps) {
           onChange={(e) => setCurrentModel(e.target.value as any)}
           className="w-full bg-aether-bg-dark border border-aether-indigo-light rounded-lg px-3 py-2 text-aether-text text-sm focus:outline-none focus:ring-2 focus:ring-aether-purple-light transition-all"
         >
-          <option value="auto">🤖 Auto-Select (Smart Routing)</option>
-          <option value="apriel">🏠 Apriel (Self-Hosted, Free)</option>
-          <option value="grok">🧠 Grok-2 (Advanced Reasoning)</option>
-          <option value="claude">👁️ Claude (Vision + Analysis)</option>
+          <option value="apriel">🏠 Apriel (Sovereign AI)</option>
+          <option value="auto">🤖 Auto-Select (Coming Soon)</option>
         </select>
         <p className="mt-2 text-xs text-aether-text-muted">
-          {currentModel === 'auto' && 'Routes to best model automatically'}
-          {currentModel === 'apriel' && 'Fast, reliable, US-hosted'}
-          {currentModel === 'grok' && 'Complex reasoning tasks'}
-          {currentModel === 'claude' && 'Image analysis & deep insights'}
+          {currentModel === 'apriel' && 'Fast, reliable, US-hosted on L40S GPU'}
+          {currentModel === 'auto' && 'Smart routing - launching Q1 2025'}
         </p>
       </div>
 

@@ -1,0 +1,31 @@
+
+version: '3.7'
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: aether-search
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng
+    environment:
+      - BASE_URL=http://localhost:8888
+      - INSTANCE_NAME=AetherSearch
+      - AUTOCOMPLETE=google
+    restart: unless-stopped
+    networks:
+      - aether-network
+
+  
+  redis:
+    image: redis:alpine
+    container_name: searxng-redis
+    command: redis-server --save 30 1 --loglevel warning
+    networks:
+      - aether-network
+    restart: unless-stopped
+
+networks:
+  aether-network:
+    driver: bridge

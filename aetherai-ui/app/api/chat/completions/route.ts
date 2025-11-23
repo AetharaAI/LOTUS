@@ -1,24 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// THE SYSTEM PROMPT (The Governor)
+// 1. THE CLEAN SYSTEM PROMPT
+// We removed the instructions about <think> tags because the model does that natively.
+// We removed the "Deconstruct problems" instruction because it causes meta-analysis.
 const SYSTEM_PROMPT = `
-You are Apriel, Sovereign AI of AetherPro. 
-- ROLE: Master Electrician & Enterprise Architect.
-- MODE: Thinking Mode Enabled.
-- OUTPUT: Use <think> tags for reasoning, then output the final answer.
+You are Apriel, Sovereign AI of AetherPro.
+ROLE: Enterprise Architect for Sovereign AI.
+TONE: Professional, Astute, Concise.
+INSTRUCTION: Provide assistance to Sovereign AI Enterprise and answer general inquiries to any questions including non-domain topics.
 `;
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model, temperature } = await req.json();
+    const { messages, model } = await req.json();
 
-    // 1. Inject the System Prompt
+    // Inject System Prompt
     const fullMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
       ...messages
     ];
 
-    // 2. Open the connection to the L40S (vLLM)
     const upstreamResponse = await fetch(process.env.AETHER_UPSTREAM_URL!, {
       method: 'POST',
       headers: {
@@ -28,17 +29,20 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: model || 'apriel-1.5-15b-thinker',
         messages: fullMessages,
-        temperature: temperature || 0.3,
-        stream: true, // Vital: We need the raw stream
-        max_tokens: 8192,
+        // 2. TUNING PARAMETERS
+        temperature: 0.6,         // Increased from 0.3 to prevent loops
+        repetition_penalty: 1.1,  // CRITICAL: Kills the "We can also mention" loop
+        max_tokens: 4096,         // Cap the output so it doesn't ramble
+        stream: true,
       }),
     });
 
     if (!upstreamResponse.ok) {
-      throw new Error(`L40S Error: ${upstreamResponse.statusText}`);
+      const errText = await upstreamResponse.text();
+      console.error("L40S Error:", errText);
+      throw new Error(`L40S Error: ${upstreamResponse.status} ${upstreamResponse.statusText}`);
     }
 
-    // 3. Create the Transcoder Stream
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -47,7 +51,6 @@ export async function POST(req: NextRequest) {
         const reader = upstreamResponse.body?.getReader();
         if (!reader) return controller.close();
 
-        let buffer = '';
         let isThinking = false;
 
         try {
@@ -56,8 +59,6 @@ export async function POST(req: NextRequest) {
             if (done) break;
 
             const chunk = decoder.decode(value, { stream: true });
-            
-            // vLLM sends: data: { JSON } \n\n
             const lines = chunk.split('\n');
 
             for (const line of lines) {
@@ -68,51 +69,42 @@ export async function POST(req: NextRequest) {
 
                   if (!content) continue;
 
-                  // --- THE PARSING LOGIC ---
+                  // 3. ROBUST TAG PARSING
+                  // Sometimes the model outputs "<think>\n" split across chunks.
                   
-                  // Check for Start of Thought
                   if (content.includes('<think>')) {
                     isThinking = true;
                     const clean = content.replace('<think>', '');
-                    if (clean) {
-                      // Send "Thinking" event
+                    if (clean.trim()) {
                       const payload = JSON.stringify({ type: 'thinking', content: clean });
                       controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
                     }
                     continue;
                   }
 
-                  // Check for End of Thought
                   if (content.includes('</think>')) {
                     isThinking = false;
                     const clean = content.replace('</think>', '');
-                    if (clean) {
-                      // Switch back to "Content" event
+                    if (clean.trim()) {
                       const payload = JSON.stringify({ type: 'content', content: clean });
                       controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
                     }
                     continue;
                   }
 
-                  // Normal Streaming
                   const type = isThinking ? 'thinking' : 'content';
                   const payload = JSON.stringify({ type, content });
                   controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
 
                 } catch (e) {
-                  // Ignore parse errors on partial chunks
+                   // Ignore partial JSON chunks
                 }
               }
             }
           }
-          
-          // 4. Send [DONE] signal expected by your library
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
-
         } catch (error) {
-          const errPayload = JSON.stringify({ type: 'error', error: 'Stream Failed' });
-          controller.enqueue(encoder.encode(`data: ${errPayload}\n\n`));
           controller.close();
         }
       },

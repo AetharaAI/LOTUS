@@ -746,10 +746,129 @@ All purple tones should now be the deeper, richer purple from the logo.
 
 ## 📋 Add This to Your Claude Code Spec
 
-Insert this as **Task 6.3** right after "Task 6.2: Update next.config.js"
 
 **Note for Claude Code:**
 > Update the Tailwind config to match the new AetherAI brand colors. The deep purple palette (#0a0515 → #6b4a8e) replaces the previous lighter purple scheme. This ensures the entire UI matches the logo's deep space aesthetic. The orange accent (#ff6b35) is used sparingly for CTAs and highlights.
+
+---
+
+## **PHASE 6.4: Add AetherAI Logo Assets**
+
+### Task 6.4.1: Copy logo files to public directory
+
+**Action:** Copy the following files from your local machine to `public/` directory:
+
+```
+public/
+├── logo.png              (1024x1024 main logo)
+├── logo-256.png          (256x256 for general use)
+├── favicon.ico           (multi-resolution favicon)
+├── favicon-16x16.png
+├── favicon-32x32.png
+├── favicon-48x48.png
+├── apple-touch-icon.png  (180x180)
+├── android-chrome-192x192.png
+```
+
+### Task 6.4.2: Update app/layout.tsx metadata
+
+**File:** `app/layout.tsx`
+
+**Find the metadata export and update it:**
+
+```typescript
+export const metadata = {
+  title: 'AetherAI - Sovereign AI Platform',
+  description: 'The American Standard for Sovereign AI. Powered by Apriel on US infrastructure.',
+  icons: {
+    icon: [
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-48x48.png', sizes: '48x48', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+    other: [
+      { rel: 'icon', url: '/favicon.ico' },
+    ],
+  },
+  manifest: '/site.webmanifest',
+};
+```
+
+### Task 6.4.3: Create site.webmanifest
+
+**File:** `public/site.webmanifest`
+
+**Create new file with:**
+
+```json
+{
+  "name": "AetherAI",
+  "short_name": "AetherAI",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo-256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#1a0b2e",
+  "background_color": "#0a0515",
+  "display": "standalone"
+}
+```
+
+### Task 6.4.4: Update Logo component
+
+**File:** `components/shared/Logo.tsx`
+
+**Update to use the new Y-node logo:**
+
+```typescript
+'use client';
+
+interface LogoProps {
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}
+
+export function Logo({ size = 'md', className = '' }: LogoProps) {
+  const sizeClasses = {
+    sm: 'h-8',
+    md: 'h-12',
+    lg: 'h-16',
+  };
+
+  return (
+    <div className={`flex items-center gap-3 ${className}`}>
+      <img
+        src="/logo.png"
+        alt="AetherAI"
+        className={`${sizeClasses[size]} w-auto`}
+      />
+    </div>
+  );
+}
+
+export function LogoWithTagline({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flex flex-col items-center ${className}`}>
+      <img src="/logo.png" alt="AetherAI" className="h-24 w-auto mb-4" />
+      <h1 className="text-3xl font-bold bg-gradient-to-r from-aether-purple-light to-aether-orange bg-clip-text text-transparent">
+        AetherAI
+      </h1>
+      <p className="text-aether-text-muted text-sm mt-2">
+        The American Standard for Sovereign AI
+      </p>
+    </div>
+  );
+}
+```
 
 ---
 
@@ -863,7 +982,7 @@ After completion:
 
 **Claude Code: Execute this plan in order. Report any errors immediately. Test after Phase 7 before deploying.**
 
-## Additional Notes: I have added a logo and used these names and variations, you will find them in public directory.
+## Additional Notes: I have added a logo & favicon images, you will find them in public directory.
 
  
 **File locations:**

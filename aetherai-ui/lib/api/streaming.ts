@@ -4,7 +4,7 @@
  * Handles Server-Sent Events for real-time chat streaming.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export interface StreamCallbacks {
   onThinking?: (thinking: string) => void;

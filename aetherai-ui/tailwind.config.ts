@@ -2,73 +2,50 @@ import type { Config } from 'tailwindcss';
 
 const config: Config = {
   content: [
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {
       colors: {
-        aether: {
-          // Sharp Purple Gradient - Use EVERYWHERE brand appears
-          'purple-dark': '#6d28d9',
-          'purple-light': '#8b5cf6',
+        // Deep Space Purple Palette (AetherAI Brand)
+        'aether-purple-darkest': '#0a0515',
+        'aether-purple-dark': '#1a0b2e',
+        'aether-purple-mid': '#2d1b4e',
+        'aether-purple-light': '#4a2c6d',
+        'aether-purple-accent': '#6b4a8e',
 
-          // Deep Indigo - Foundation
-          'indigo': '#1e1b4b',
-          'indigo-dark': '#0f0d2e',
-          'indigo-light': '#312e81',
+        // High Voltage Orange (Brand Accent)
+        'aether-orange': '#ff6b35',
+        'aether-orange-glow': '#ff8555',
+        'aether-orange-dark': '#cc5529',
 
-          // Backgrounds
-          'bg-dark': '#0a0a0f',
-          'bg-card': '#1a1625',
-          'bg-hover': '#251d35',
+        // Industrial Neutrals
+        'aether-steel': '#8892b0',
+        'aether-graphite': '#1e1e2e',
+        'aether-white': '#e6f1ff',
+        'aether-text': '#e6f1ff',
+        'aether-text-muted': '#a8b2d1',
 
-          // Text
-          'text': '#e2e8f0',
-          'text-muted': '#94a3b8',
-          'text-dark': '#0f172a',
+        // Semantic Colors (mapped to palette)
+        'aether-bg-dark': '#0a0515',      // Darkest purple
+        'aether-bg-card': '#1a0b2e',       // Dark purple
+        'aether-bg-hover': '#2d1b4e',      // Mid purple
 
-          // Accents (minimal use)
-          'orange-spark': '#ff6b35',
-          'gold': '#d4af37',
-        },
+        // Borders
+        'aether-border': '#2d1b4e',
+        'aether-border-light': '#4a2c6d',
+
+        // Legacy alias (for components using old naming)
+        'aether-indigo-light': '#4a2c6d',
       },
       fontFamily: {
-        sans: ['Outfit', 'Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Menlo', 'Consolas', 'monospace'],
       },
       animation: {
-        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-        'fade-in': 'fade-in 0.3s ease-out',
-        'slide-up': 'slide-up 0.3s ease-out',
-      },
-      keyframes: {
-        'pulse-glow': {
-          '0%, 100%': {
-            textShadow: '0 0 20px rgba(109, 40, 217, 0.8)',
-          },
-          '50%': {
-            textShadow: '0 0 40px rgba(109, 40, 217, 1)',
-          },
-        },
-        'fade-in': {
-          from: { opacity: '0' },
-          to: { opacity: '1' },
-        },
-        'slide-up': {
-          from: {
-            opacity: '0',
-            transform: 'translateY(10px)',
-          },
-          to: {
-            opacity: '1',
-            transform: 'translateY(0)',
-          },
-        },
-      },
-      backgroundImage: {
-        'gradient-aether': 'linear-gradient(135deg, #6d28d9, #8b5cf6)',
-        'gradient-aether-indigo': 'linear-gradient(135deg, #312e81, #6d28d9)',
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
     },
   },

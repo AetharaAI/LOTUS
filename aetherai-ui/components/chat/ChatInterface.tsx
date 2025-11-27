@@ -57,8 +57,14 @@ export default function ChatInterface() {
           ],
           model: currentModel === 'auto' ? 'apriel-1.5-15b-thinker' : currentModel,
           temperature: 0.7,
+          enable_tools: true,
         },
         {
+          // === Thinking Callbacks ===
+          onThinkingStart: () => {
+            // Optional: Show thinking indicator
+          },
+
           onThinking: (chunk: string) => {
             thinkingContent += chunk;
             updateLastMessage({
@@ -66,6 +72,17 @@ export default function ChatInterface() {
             });
           },
 
+          onThinkingEnd: (fullThinking: string) => {
+            // Use the complete thinking if provided
+            if (fullThinking) {
+              thinkingContent = fullThinking;
+              updateLastMessage({
+                thinking: thinkingContent,
+              });
+            }
+          },
+
+          // === Content Callbacks ===
           onContent: (chunk: string) => {
             responseContent += chunk;
             updateLastMessage({
@@ -73,31 +90,79 @@ export default function ChatInterface() {
             });
           },
 
-          onToolUse: (data: any) => {
-            if (data.tool === 'web_search') {
-              setCurrentToolUse({
-                tool: data.tool,
-                query: data.query,
-                results: data.results,
-                isSearching: data.status === 'searching',
+          onFinalStart: () => {
+            // Optional: Indicate final response starting
+          },
+
+          onFinalResponse: (response: string) => {
+            // Use the complete final response if provided
+            if (response) {
+              responseContent = response;
+              updateLastMessage({
+                content: responseContent,
               });
             }
           },
 
-          onToolResult: (data: any) => {
-            if (data.tool === 'web_search') {
+          // === Tool Callbacks ===
+          onToolUse: (data) => {
+            setCurrentToolUse({
+              tool: data.tool,
+              query: data.query,
+              results: data.results,
+              isSearching: data.status === 'searching',
+            });
+          },
+
+          onToolCallsDetected: (calls) => {
+            // Multiple tools detected - show first one
+            if (calls.length > 0) {
+              const firstCall = calls[0];
               setCurrentToolUse({
-                tool: data.tool,
-                query: data.query,
-                results: data.results,
-                isSearching: false,
+                tool: firstCall.name,
+                query: firstCall.arguments?.query || '',
+                isSearching: true,
               });
             }
           },
 
-          onDone: () => {
+          onToolExecuting: (tool, args) => {
+            setCurrentToolUse({
+              tool,
+              query: args.query || '',
+              isSearching: true,
+            });
+          },
+
+          onToolResult: (data) => {
+            setCurrentToolUse({
+              tool: data.tool,
+              query: data.query,
+              results: data.results,
+              isSearching: false,
+            });
+
+            // Auto-clear tool display after a delay
+            setTimeout(() => {
+              setCurrentToolUse(null);
+            }, 2000);
+          },
+
+          onToolError: (tool, error) => {
+            console.error(`Tool ${tool} error:`, error);
+            setCurrentToolUse(null);
+          },
+
+          // === Completion Callbacks ===
+          onDone: (finalResponse?: string) => {
+            // If final response provided, use it
+            if (finalResponse && !responseContent) {
+              updateLastMessage({
+                content: finalResponse,
+              });
+            }
             setIsStreaming(false);
-            setCurrentToolUse(null); // Clear tool use on completion
+            setCurrentToolUse(null);
           },
 
           onError: (error: string) => {
@@ -113,6 +178,7 @@ export default function ChatInterface() {
     } catch (error) {
       console.error('Chat error:', error);
       setIsStreaming(false);
+      setCurrentToolUse(null);
     }
   };
 
@@ -182,7 +248,11 @@ export default function ChatInterface() {
         </header>
 
         {/* Messages */}
-        <MessageList messages={messages} isStreaming={isStreaming} currentToolUse={currentToolUse} />
+        <MessageList 
+          messages={messages} 
+          isStreaming={isStreaming} 
+          currentToolUse={currentToolUse} 
+        />
 
         {/* Input */}
         <InputBar onSend={handleSendMessage} disabled={isStreaming} />

@@ -1,0 +1,84 @@
+# see https://docs.searxng.org/admin/settings/settings.html#settings-use-default-settings
+use_default_settings: true
+
+server:
+  # base_url is defined in the SEARXNG_BASE_URL environment variable, see .env and docker-compose.yml
+  secret_key: "82ac14f5aa86bc9b5e8cce7bb07e8ba7e6d8e4f9e7ee0af0fccfed6eb5bd1fde"
+  limiter: false  # ADDED: Disable rate limiting
+  image_proxy: true
+
+redis:
+  url: redis://redis:6379/0
+
+ui:
+  static_use_hash: true
+
+engines:
+  - name: gitea.com
+    engine: json_engine
+    search_url: https://gitea.com/api/v1/repos/search?q={query}&limit={limit}
+    url_query: html_url
+    title_query: name
+    content_query: description
+    page_size: 10
+    categories: [it, repos]
+    disabled: false
+    timeout: 10.0
+    shortcut: gtc
+    about:
+      website: https://gitea.com
+      wikidata_id: Q27879419
+      official_api_documentation: https://try.gitea.io/api/swagger
+      use_official_api: true
+      require_api_key: false
+      results: JSON
+
+  - name: tineye
+    engine: tineye
+    shortcut: tin
+    timeout: 9.0
+    disabled: true
+
+  - name: library of congress
+    engine: loc
+    categories: images
+    shortcut: loc
+
+  - name: torch
+    engine: xpath
+    paging: true
+    search_url: http://xmh57jrknzkhv6y3ls3ubitzfqnkrwxhopf5aygthi7d6rplyvk3noyd.onion/cgi-bin/omega/omega?P={query}&DEFAULTOP=and
+    url_xpath: //a[@class="link"]/@href
+    title_xpath: //a[@class="link"]
+    content_xpath: //p[@class="sample"]
+    categories: onions
+    enable_http: true
+    shortcut: tch
+
+  - name: yacy images
+    engine: yacy
+    categories: images
+    base_url:
+      - http://localhost:8090
+      - http://yacy.searchlab.eu:8090
+    shortcut: yacyimg
+    timeout: 4.0
+    disabled: true
+
+  - name: ahmia
+    engine: ahmia
+    categories: onions
+    enable_http: true
+    shortcut: ah
+
+# ADDED: Disable bot detection completely
+botdetection:
+  ip_limit:
+    enabled: false
+  link_token:
+    enabled: false
+
+# ADDED: Allow outgoing requests with timeouts
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 15.0

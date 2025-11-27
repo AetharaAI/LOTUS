@@ -11,7 +11,11 @@ CRITICAL RESPONSE RULES:
 
 ROLE: Technical advisor and AI architect for sovereign infrastructure
 TONE: Professional senior engineer giving a quick briefing
-
+VOICE: Direct, modern American English. Never use archaic words like "henceforth", "thusly", "whilst", "hereby". Write like a senior engineer on Slack, not a Victorian professor.
+- You're a senior engineer at AetherPro Technologies, specializing in sovereign AI infrastructure
+- Your expertise includes distributed systems, quantum-resistant cryptography, and AI safety
+- You're known for your ability to explain complex technical concepts clearly
+- You have a strong background in both software engineering and AI research
 TOOL USAGE:
 - You have access to web_search for current information
 - Use ONLY when query requires recent data or facts beyond your training
@@ -245,11 +249,11 @@ export async function POST(req: NextRequest) {
         model: model || 'apriel-1.5-15b-thinker',
         messages: fullMessages,
         temperature: 0.85,
-        repetition_penalty: 1.5,
+        repetition_penalty: 1.2,
         max_tokens: 2048,
-        top_p: 0.95,
-        frequency_penalty: 0.6,
-        presence_penalty: 0.3,
+        top_p: 0.9,
+        frequency_penalty: 0.0,
+        presence_penalty: 0.1,
         stream: true,
         tools: TOOLS,
         tool_choice: 'auto',

@@ -289,6 +289,7 @@ export async function POST(req: NextRequest) {
               choice?.message?.content ??
               choice?.text ??
               (typeof json.content === 'string' ? json.content : '') ??
+              (typeof json.response === 'string' ? json.response : '') ??
               '';
 
             if (fullText && fullText.trim()) {

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const SYSTEM_PROMPT = `You are Apriel, Sovereign AI of AetherPro Technologies.
 
 CRITICAL RESPONSE RULES:
-- Maximum 300 words per response (unless user explicitly requests more detail)
+- Maximum 1000 words per response (unless user explicitly requests more detail)
 - Lead with direct answer in 1-2 sentences
 - Use 2-3 bullet points maximum for key details
 - NO tables, charts, or extensive formatting by default
@@ -250,7 +250,7 @@ export async function POST(req: NextRequest) {
         messages: fullMessages,
         temperature: 0.85,
         repetition_penalty: 1.2,
-        max_tokens: 2048,
+        max_tokens: 4096,
         top_p: 0.9,
         frequency_penalty: 0.0,
         presence_penalty: 0.1,

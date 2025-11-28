@@ -272,14 +272,52 @@ export async function POST(req: NextRequest) {
 
     const stream = new ReadableStream({
       async start(controller) {
-        const reader = upstreamResponse.body?.getReader();
-        if (!reader) return controller.close();
-
         const emit = (payload: object) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
         };
 
         try {
+          const contentType = upstreamResponse.headers.get('content-type') || '';
+
+          // 🔹 Non-SSE upstream (single JSON completion)
+          if (!contentType.includes('text/event-stream')) {
+            const json = await upstreamResponse.json();
+
+            // Be very forgiving about shape
+            const choice = Array.isArray(json.choices) ? json.choices[0] : undefined;
+            const fullText =
+              choice?.message?.content ??
+              choice?.text ??
+              (typeof json.content === 'string' ? json.content : '') ??
+              '';
+
+            if (fullText && fullText.trim()) {
+              const segments = parser.parse(fullText);
+
+              for (const seg of segments) {
+                if (!seg.content?.trim()) continue;
+
+                if (seg.type === 'thinking') {
+                  emit({ type: 'thinking', content: seg.content });
+                } else {
+                  emit({ type: 'content', content: seg.content });
+                }
+              }
+            }
+
+            // End of stream
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+            return;
+          }
+
+          // 🔹 SSE upstream (current behavior)
+          const reader = upstreamResponse.body?.getReader();
+          if (!reader) {
+            controller.close();
+            return;
+          }
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -295,13 +333,12 @@ export async function POST(req: NextRequest) {
                 const delta = json.choices?.[0]?.delta;
                 if (!delta) continue;
 
-                // Handle tool calls with accumulation
+                // === Tool calls (unchanged) ===
                 if (delta.tool_calls) {
                   const toolDelta = delta.tool_calls[0];
                   const { complete, toolCall } = parser.accumulateToolCall(toolDelta);
 
                   if (complete && toolCall) {
-                    // Emit tool start
                     emit({
                       type: 'tool_use',
                       tool: toolCall.name,
@@ -309,17 +346,19 @@ export async function POST(req: NextRequest) {
                       status: 'searching',
                     });
 
-                    // Execute search
                     if (toolCall.name === 'web_search') {
                       try {
-                        const searchResponse = await fetch(`${process.env.SEARCH_API_URL || 'http://localhost:3000/api/search'}`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            query: toolCall.arguments.query,
-                            num_results: toolCall.arguments.num_results || 5,
-                          }),
-                        });
+                        const searchResponse = await fetch(
+                          `${process.env.SEARCH_API_URL || 'http://localhost:3000/api/search'}`,
+                          {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              query: toolCall.arguments.query,
+                              num_results: toolCall.arguments.num_results || 5,
+                            }),
+                          }
+                        );
 
                         if (searchResponse.ok) {
                           const searchData = await searchResponse.json();
@@ -338,10 +377,11 @@ export async function POST(req: NextRequest) {
                       }
                     }
                   }
+
                   continue;
                 }
 
-                // Handle content with robust parsing
+                // === Content chunks ===
                 const content = delta.content;
                 if (!content) continue;
 
@@ -351,14 +391,13 @@ export async function POST(req: NextRequest) {
                     emit({ type: seg.type, content: seg.content });
                   }
                 }
-
               } catch {
                 // Ignore malformed JSON chunks
               }
             }
           }
 
-          // Flush remaining buffer
+          // Flush any remaining buffered content
           const remaining = parser.flush();
           for (const seg of remaining) {
             if (seg.content?.trim()) {

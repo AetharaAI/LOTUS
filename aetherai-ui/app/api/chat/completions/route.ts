@@ -336,22 +336,8 @@ export async function POST(req: NextRequest) {
               try {
                 const json = JSON.parse(line.slice(6));
                 const delta = json.choices?.[0]?.delta;
-                if (!delta) {
-                  // Check for final message
-                  const message = json.choices?.[0]?.message;
-                  if (message) {
-                    const fullText = message.content || '';
-                    if (fullText) {
-                      const segments = parser.parse(fullText);
-                      for (const seg of segments) {
-                        if (seg.content?.trim()) {
-                          emit({ type: seg.type, content: seg.content });
-                        }
-                      }
-                    }
-                  }
-                  continue;
-                }
+                if (delta) {
+                  // OpenAI-style delta chunks
 
                 // === Tool calls (unchanged) ===
                 if (delta.tool_calls) {
@@ -411,9 +397,13 @@ export async function POST(req: NextRequest) {
                     emit({ type: seg.type, content: seg.content });
                   }
                 }
-              } catch {
-                // Ignore malformed JSON chunks
+              } else {
+                // Pass through custom events (e.g., router's SSE format)
+                emit(json);
               }
+            } catch {
+              // Ignore malformed JSON chunks
+            }
             }
           }
 

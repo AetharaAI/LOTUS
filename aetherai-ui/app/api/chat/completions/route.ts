@@ -258,6 +258,7 @@ export async function POST(req: NextRequest) {
         tools: TOOLS,
         tool_choice: 'auto',
       }),
+      signal: AbortSignal.timeout(600000), // 10 minutes timeout for 3-pass routing
     });
 
     if (!upstreamResponse.ok) {
@@ -288,8 +289,11 @@ export async function POST(req: NextRequest) {
             const fullText =
               choice?.message?.content ??
               choice?.text ??
-              (typeof json.content === 'string' ? json.content : '') ??
-              (typeof json.response === 'string' ? json.response : '') ??
+              json.content ??
+              json.response ??
+              json.text ??
+              json.result ??
+              json.output ??
               '';
 
             if (fullText && fullText.trim()) {
@@ -332,7 +336,22 @@ export async function POST(req: NextRequest) {
               try {
                 const json = JSON.parse(line.slice(6));
                 const delta = json.choices?.[0]?.delta;
-                if (!delta) continue;
+                if (!delta) {
+                  // Check for final message
+                  const message = json.choices?.[0]?.message;
+                  if (message) {
+                    const fullText = message.content || '';
+                    if (fullText) {
+                      const segments = parser.parse(fullText);
+                      for (const seg of segments) {
+                        if (seg.content?.trim()) {
+                          emit({ type: seg.type, content: seg.content });
+                        }
+                      }
+                    }
+                  }
+                  continue;
+                }
 
                 // === Tool calls (unchanged) ===
                 if (delta.tool_calls) {

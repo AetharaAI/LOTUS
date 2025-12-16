@@ -3,66 +3,31 @@ import { NextRequest, NextResponse } from 'next/server';
 /**
  * Apriel 1.6 Chat API Route
  * =========================
- * Clean OpenAI-compatible streaming for SFT-trained model.
- * No custom parsing needed - model outputs standard format.
+ * Works with your EXISTING backend config - no model name changes.
+ * Just simplified streaming for the SFT-trained 1.6 model.
  */
-
-const API_URL = '/api';
-
-// Optional: If you want to inject a system prompt
-const SYSTEM_PROMPT = `You are Apriel, a helpful AI assistant. You provide clear, accurate, and thoughtful responses.`;
-
-// Tool definitions (if using function calling)
-const TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description: 'Search the web for current information',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'The search query'
-          }
-        },
-        required: ['query']
-      }
-    }
-  }
-];
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model = 'apriel' } = await req.json();
+    const { messages, model } = await req.json();
 
-    // Optionally inject system prompt if not already present
-    const hasSystemPrompt = messages.some((m: any) => m.role === 'system');
-    const fullMessages = hasSystemPrompt 
-      ? messages 
-      : [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
-
-    // Your vLLM + LiteLLM endpoint
+    // Use your existing backend exactly as configured
     const upstreamUrl = process.env.AETHER_UPSTREAM_URL || 'http://localhost:8001/v1/chat/completions';
+    const apiKey = process.env.AETHER_API_KEY || 'sk-aether-sovereign-master-key-2026';
 
     const upstreamResponse = await fetch(upstreamUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.AETHER_API_KEY || 'sk-aether-sovereign-master-key-2026'}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model,
-        messages: fullMessages,
-        // Apriel 1.6 optimal parameters
+        model: model || 'apriel',  // Uses whatever model name your backend expects
+        messages: messages,
         temperature: 0.7,
         top_p: 0.9,
         max_tokens: 8192,
         stream: true,
-        // Enable if you want function calling
-        // tools: TOOLS,
-        // tool_choice: 'auto',
       }),
       signal: AbortSignal.timeout(600000), 
     });
@@ -70,13 +35,16 @@ export async function POST(req: NextRequest) {
     if (!upstreamResponse.ok) {
       const errText = await upstreamResponse.text();
       console.error('Upstream Error:', errText);
-      throw new Error(`Upstream Error: ${upstreamResponse.status} - ${errText}`);
+      return NextResponse.json(
+        { error: `Upstream Error: ${upstreamResponse.status}` },
+        { status: upstreamResponse.status }
+      );
     }
 
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    // Simple pass-through stream - no parsing needed for SFT model
+    // Simple streaming - no complex parsing for 1.6
     const stream = new ReadableStream({
       async start(controller) {
         const emit = (payload: object) => {
@@ -105,42 +73,20 @@ export async function POST(req: NextRequest) {
                 const json = JSON.parse(line.slice(6));
                 const delta = json.choices?.[0]?.delta;
                 
-                if (delta) {
-                  // Handle tool calls if enabled
-                  if (delta.tool_calls) {
-                    // Accumulate tool call
-                    emit({ 
-                      type: 'tool_call', 
-                      tool_call: delta.tool_calls[0] 
-                    });
-                    continue;
-                  }
-
-                  // Handle regular content
-                  if (delta.content) {
-                    emit({ 
-                      type: 'content', 
-                      content: delta.content 
-                    });
-                  }
+                if (delta?.content) {
+                  emit({ type: 'content', content: delta.content });
                 }
 
-                // Handle finish reason
                 if (json.choices?.[0]?.finish_reason) {
-                  emit({ 
-                    type: 'finish', 
-                    reason: json.choices[0].finish_reason 
-                  });
+                  emit({ type: 'finish', reason: json.choices[0].finish_reason });
                 }
-
               } catch (e) {
                 // Ignore parse errors
-                console.error('Parse error:', e);
               }
             }
           }
 
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          emit({ type: 'done' });
           controller.close();
 
         } catch (error) {

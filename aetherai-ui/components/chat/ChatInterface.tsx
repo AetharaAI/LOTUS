@@ -1,259 +1,141 @@
 'use client';
 
 import { useState } from 'react';
-import { useChatStore } from '@/lib/stores/chatStore';
-import { MessageList } from './MessageList';
-import { InputBar } from './InputBar';
-import { Sidebar } from './Sidebar';
+import { useChatStore } from '@/lib/stores/chatstore';
 import { streamChat } from '@/lib/streaming';
 
-export default function ChatInterface() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [currentToolUse, setCurrentToolUse] = useState<{
-    tool: string;
-    query: string;
-    results?: any[];
-    isSearching: boolean;
-  } | null>(null);
-
-  const {
-    messages,
+export function ChatInterface() {
+  const { 
+    messages, 
+    addMessage, 
+    updateLastMessage, 
+    setIsStreaming,
     isStreaming,
     currentModel,
-    addMessage,
-    updateLastMessage,
-    setIsStreaming,
+    getContext 
   } = useChatStore();
 
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isStreaming) return;
+  const [input, setInput] = useState('');
+
+  const handleSend = async () => {
+    if (!input.trim() || isStreaming) return;
+
+    const userMessage = input.trim();
+    setInput('');
 
     // Add user message
-    addMessage({
-      role: 'user',
-      content: content.trim(),
+    addMessage({ 
+      role: 'user', 
+      content: userMessage 
     });
 
-    // Prepare for assistant response
+    // Add empty assistant message to update
+    addMessage({ 
+      role: 'assistant', 
+      content: '',
+      model: currentModel 
+    });
+
     setIsStreaming(true);
 
-    // Create empty assistant message that we'll update
-    addMessage({
-      role: 'assistant',
-      content: '',
-      thinking: '',
-    });
-
-    // Track response content as it streams
-    let thinkingContent = '';
-    let responseContent = '';
-
     try {
-      const contextMessages = useChatStore.getState().getContext();
+      // Get conversation context
+      const context = getContext();
+      
+      // Stream the response
       await streamChat(
+        [...context, { role: 'user', content: userMessage }],
+        currentModel,
         {
-          messages: contextMessages,
-          model: currentModel === 'auto' ? 'apriel-1.5-15b-thinker' : currentModel,
-          temperature: 0.7,
-          enable_tools: true,
-        },
-        {
-          // === Thinking Callbacks ===
-          onThinkingStart: () => {
-            // Optional: Show thinking indicator
-          },
-
-          onThinking: (chunk: string) => {
-            thinkingContent += chunk;
-            updateLastMessage({
-              thinking: thinkingContent,
+          onContent: (content) => {
+            // Append content to last message
+            updateLastMessage({ 
+              content: (messages[messages.length - 1]?.content || '') + content 
             });
           },
-
-          onThinkingEnd: (fullThinking: string) => {
-            // Use the complete thinking if provided
-            if (fullThinking) {
-              thinkingContent = fullThinking;
-              updateLastMessage({
-                thinking: thinkingContent,
-              });
-            }
+          
+          onToolCall: (toolCall) => {
+            console.log('Tool call:', toolCall);
+            // Handle tool calls if needed
           },
-
-          // === Content Callbacks ===
-          onContent: (chunk: string) => {
-            responseContent += chunk;
-            updateLastMessage({
-              content: responseContent,
-            });
-          },
-
-          onFinalStart: () => {
-            // Optional: Indicate final response starting
-          },
-
-          onFinalResponse: (response: string) => {
-            // Use the complete final response if provided
-            if (response) {
-              responseContent = response;
-              updateLastMessage({
-                content: responseContent,
-              });
-            }
-          },
-
-          // === Tool Callbacks ===
-          onToolUse: (data) => {
-            setCurrentToolUse({
-              tool: data.tool,
-              query: data.query,
-              results: data.results,
-              isSearching: data.status === 'searching',
-            });
-          },
-
-          onToolCallsDetected: (calls) => {
-            // Multiple tools detected - show first one
-            if (calls.length > 0) {
-              const firstCall = calls[0];
-              setCurrentToolUse({
-                tool: firstCall.name,
-                query: firstCall.arguments?.query || '',
-                isSearching: true,
-              });
-            }
-          },
-
-          onToolExecuting: (tool, args) => {
-            setCurrentToolUse({
-              tool,
-              query: args.query || '',
-              isSearching: true,
-            });
-          },
-
-          onToolResult: (data) => {
-            setCurrentToolUse({
-              tool: data.tool,
-              query: data.query,
-              results: data.results,
-              isSearching: false,
-            });
-
-            // Auto-clear tool display after a delay
-            setTimeout(() => {
-              setCurrentToolUse(null);
-            }, 2000);
-          },
-
-          onToolError: (tool, error) => {
-            console.error(`Tool ${tool} error:`, error);
-            setCurrentToolUse(null);
-          },
-
-          // === Completion Callbacks ===
-          onDone: (finalResponse?: string) => {
-            // If final response provided, use it
-            if (finalResponse && !responseContent) {
-              updateLastMessage({
-                content: finalResponse,
-              });
-            }
+          
+          onFinish: (reason) => {
+            console.log('Stream finished:', reason);
             setIsStreaming(false);
-            setCurrentToolUse(null);
           },
-
-          onError: (error: string) => {
+          
+          onError: (error) => {
             console.error('Stream error:', error);
-            updateLastMessage({
-              content: responseContent || `Error: ${error}`,
+            updateLastMessage({ 
+              content: `Error: ${error}` 
             });
             setIsStreaming(false);
-            setCurrentToolUse(null);
-          },
+          }
         }
       );
     } catch (error) {
       console.error('Chat error:', error);
+      updateLastMessage({ 
+        content: `Error: ${String(error)}` 
+      });
       setIsStreaming(false);
-      setCurrentToolUse(null);
     }
   };
 
   return (
-    <div className="flex h-screen bg-aether-bg-dark text-aether-text">
-      {/* Sidebar - Desktop always visible, Mobile toggleable */}
-      <div
-        className={`
-          fixed md:relative z-50 md:z-auto
-          w-80 h-full
-          transform transition-transform duration-300 ease-in-out
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        `}
-      >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
+    <div className="flex flex-col h-screen">
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={`flex ${
+              message.role === 'user' ? 'justify-end' : 'justify-start'
+            }`}
+          >
+            <div
+              className={`max-w-[80%] rounded-lg p-4 ${
+                message.role === 'user'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-900'
+              }`}
+            >
+              <div className="prose prose-sm">
+                {message.content}
+              </div>
+              {message.thinking && (
+                <details className="mt-2 text-xs opacity-70">
+                  <summary>View reasoning</summary>
+                  <pre className="mt-1 whitespace-pre-wrap">
+                    {message.thinking}
+                  </pre>
+                </details>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main chat area */}
-      <div className="flex-1 flex flex-col">
-        {/* Header with mobile menu toggle */}
-        <header className="h-16 border-b border-aether-indigo-light flex items-center px-4 md:px-6 bg-aether-bg-card">
+      {/* Input */}
+      <div className="border-t p-4">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            disabled={isStreaming}
+            placeholder="Message Apriel..."
+            className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="md:hidden mr-4 text-aether-text hover:text-aether-purple-light transition-colors"
+            onClick={handleSend}
+            disabled={isStreaming || !input.trim()}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M3 12H21M3 6H21M3 18H21"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            {isStreaming ? 'Sending...' : 'Send'}
           </button>
-
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold bg-gradient-to-r from-aether-purple-light to-aether-indigo-light bg-clip-text text-transparent">
-              AetherAI
-            </h1>
-            <p className="text-xs text-aether-text-muted">
-              Powered by Apriel • Sovereign US Infrastructure
-            </p>
-          </div>
-
-          {/* Model badge */}
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-aether-bg-dark rounded-full border border-aether-indigo-light">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-medium">
-              {currentModel === 'auto' ? 'Apriel (Auto)' : currentModel.toUpperCase()}
-            </span>
-          </div>
-        </header>
-
-        {/* Messages */}
-        <MessageList 
-          messages={messages} 
-          isStreaming={isStreaming} 
-          currentToolUse={currentToolUse} 
-        />
-
-        {/* Input */}
-        <InputBar onSend={handleSendMessage} disabled={isStreaming} />
+        </div>
       </div>
     </div>
   );

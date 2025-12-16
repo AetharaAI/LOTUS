@@ -49,12 +49,10 @@ export default function ChatInterface() {
     let responseContent = '';
 
     try {
+      const contextMessages = useChatStore.getState().getContext();
       await streamChat(
         {
-          messages: [
-            ...messages,
-            { role: 'user', content: content.trim() }
-          ],
+          messages: contextMessages,
           model: currentModel === 'auto' ? 'apriel-1.5-15b-thinker' : currentModel,
           temperature: 0.7,
           enable_tools: true,

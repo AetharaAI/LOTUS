@@ -239,33 +239,32 @@ export async function POST(req: NextRequest) {
       ...messages
     ];
 
-    // Determine upstream URL - fallback to localhost:8001 if env var is missing
-    const upstreamUrl = process.env.AETHER_UPSTREAM_URL || 'http://localhost:8001/v1/chat/completions';
-
-    const upstreamResponse = await fetch(upstreamUrl, {
+    const upstreamResponse = await fetch(process.env.AETHER_UPSTREAM_URL!, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.AETHER_API_KEY || 'sk-aether-sovereign-master-key-2026'}`,
+        'Authorization': `Bearer ${process.env.AETHER_API_KEY}`,
       },
       body: JSON.stringify({
-        model: model || 'apriel', // Simplified alias for LiteLLM
+        model: model || 'apriel-1.5-15b-thinker',
         messages: fullMessages,
-        temperature: 0.6,        // <-- UPDATED: Better for reasoning
-        repetition_penalty: 1.0, // <-- CRITICAL FIX: Must be 1.0 for Thinking models
-        max_tokens: 8192,
+        temperature: 0.85,
+        repetition_penalty: 1.2,
+        max_tokens: 4096,
         top_p: 0.9,
+        frequency_penalty: 0.0,
+        presence_penalty: 0.1,
         stream: true,
         tools: TOOLS,
         tool_choice: 'auto',
       }),
-      signal: AbortSignal.timeout(600000), 
+      signal: AbortSignal.timeout(600000), // 10 minutes timeout for 3-pass routing
     });
 
     if (!upstreamResponse.ok) {
       const errText = await upstreamResponse.text();
       console.error('Upstream Error:', errText);
-      throw new Error(`Upstream Error: ${upstreamResponse.status} - ${errText}`);
+      throw new Error(`Upstream Error: ${upstreamResponse.status}`);
     }
 
     const encoder = new TextEncoder();
@@ -279,6 +278,45 @@ export async function POST(req: NextRequest) {
         };
 
         try {
+          const contentType = upstreamResponse.headers.get('content-type') || '';
+
+          // 🔹 Non-SSE upstream (single JSON completion)
+          if (!contentType.includes('text/event-stream')) {
+            const json = await upstreamResponse.json();
+
+            // Be very forgiving about shape
+            const choice = Array.isArray(json.choices) ? json.choices[0] : undefined;
+            const fullText =
+              choice?.message?.content ??
+              choice?.text ??
+              json.content ??
+              json.response ??
+              json.text ??
+              json.result ??
+              json.output ??
+              '';
+
+            if (fullText && fullText.trim()) {
+              const segments = parser.parse(fullText);
+
+              for (const seg of segments) {
+                if (!seg.content?.trim()) continue;
+
+                if (seg.type === 'thinking') {
+                  emit({ type: 'thinking', content: seg.content });
+                } else {
+                  emit({ type: 'content', content: seg.content });
+                }
+              }
+            }
+
+            // End of stream
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+            return;
+          }
+
+          // 🔹 SSE upstream (current behavior)
           const reader = upstreamResponse.body?.getReader();
           if (!reader) {
             controller.close();
@@ -298,76 +336,78 @@ export async function POST(req: NextRequest) {
               try {
                 const json = JSON.parse(line.slice(6));
                 const delta = json.choices?.[0]?.delta;
-                
                 if (delta) {
-                  // === 1. Handle Tool Calls ===
-                  if (delta.tool_calls) {
-                    const toolDelta = delta.tool_calls[0];
-                    const { complete, toolCall } = parser.accumulateToolCall(toolDelta);
+                  // OpenAI-style delta chunks
 
-                    if (complete && toolCall) {
-                      emit({
-                        type: 'tool_use',
-                        tool: toolCall.name,
-                        query: toolCall.arguments.query,
-                        status: 'searching',
-                      });
+                // === Tool calls (unchanged) ===
+                if (delta.tool_calls) {
+                  const toolDelta = delta.tool_calls[0];
+                  const { complete, toolCall } = parser.accumulateToolCall(toolDelta);
 
-                      if (toolCall.name === 'web_search') {
-                        try {
-                          const searchResponse = await fetch(
-                            `${process.env.SEARCH_API_URL || 'http://localhost:3000/api/search'}`,
-                            {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                query: toolCall.arguments.query,
-                                num_results: toolCall.arguments.num_results || 5,
-                              }),
-                            }
-                          );
+                  if (complete && toolCall) {
+                    emit({
+                      type: 'tool_use',
+                      tool: toolCall.name,
+                      query: toolCall.arguments.query,
+                      status: 'searching',
+                    });
 
-                          if (searchResponse.ok) {
-                            const searchData = await searchResponse.json();
-                            emit({
-                              type: 'tool_result',
-                              tool: 'web_search',
+                    if (toolCall.name === 'web_search') {
+                      try {
+                        const searchResponse = await fetch(
+                          `${process.env.SEARCH_API_URL || 'http://localhost:3000/api/search'}`,
+                          {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
                               query: toolCall.arguments.query,
-                              results: searchData.results || [],
-                              status: 'complete',
-                            });
-                          } else {
-                            emit({ type: 'tool_error', tool: 'web_search', error: 'Search failed' });
+                              num_results: toolCall.arguments.num_results || 5,
+                            }),
                           }
-                        } catch (e) {
-                          emit({ type: 'tool_error', tool: 'web_search', error: String(e) });
+                        );
+
+                        if (searchResponse.ok) {
+                          const searchData = await searchResponse.json();
+                          emit({
+                            type: 'tool_result',
+                            tool: 'web_search',
+                            query: toolCall.arguments.query,
+                            results: searchData.results || [],
+                            status: 'complete',
+                          });
+                        } else {
+                          emit({ type: 'tool_error', tool: 'web_search', error: 'Search failed' });
                         }
+                      } catch (e) {
+                        emit({ type: 'tool_error', tool: 'web_search', error: String(e) });
                       }
                     }
-                    continue; 
                   }
 
-                  // === 2. Handle Text Content (with Thinking parser) ===
-                  const content = delta.content;
-                  if (content) {
-                    const segments = parser.parse(content);
-                    for (const seg of segments) {
-                      if (seg.content?.trim() || seg.type === 'thinking') {
-                        emit({ type: seg.type, content: seg.content });
-                      }
-                    }
-                  }
-                } else {
-                  // Pass through non-delta events
-                  emit(json);
+                  continue;
                 }
-              } catch (e) {
-                // Ignore malformed JSON chunks
+
+                // === Content chunks ===
+                const content = delta.content;
+                if (!content) continue;
+
+                const segments = parser.parse(content);
+                for (const seg of segments) {
+                  if (seg.content?.trim()) {
+                    emit({ type: seg.type, content: seg.content });
+                  }
+                }
+              } else {
+                // Pass through custom events (e.g., router's SSE format)
+                emit(json);
               }
+            } catch {
+              // Ignore malformed JSON chunks
+            }
             }
           }
 
-          // Flush parser
+          // Flush any remaining buffered content
           const remaining = parser.flush();
           for (const seg of remaining) {
             if (seg.content?.trim()) {

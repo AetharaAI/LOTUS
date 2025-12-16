@@ -24,6 +24,8 @@ export function Sidebar({ className = '', onClose }: SidebarProps) {
     loadConversation,
     createNewConversation,
     deleteConversation,
+    getContextTokens,
+    resetContext,
   } = useChatStore();
 
   const handleNewChat = () => {
@@ -194,6 +196,38 @@ export function Sidebar({ className = '', onClose }: SidebarProps) {
             })}
           </div>
         )}
+      </div>
+
+      {/* Context Gauge */}
+      <div className="p-3 border-t border-aether-indigo-light">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-semibold text-aether-text-muted">Context</span>
+          <button
+            onClick={resetContext}
+            className="text-xs text-aether-purple-light hover:underline px-1 py-0.5 rounded hover:bg-aether-bg-hover transition-colors"
+            title="Reset context window"
+          >
+            Reset
+          </button>
+        </div>
+        {(() => {
+          const tokens = getContextTokens();
+          const maxTokens = 8192;
+          const percentage = Math.min((tokens / maxTokens) * 100, 100);
+          return (
+            <>
+              <div className="w-full bg-aether-bg-dark rounded-full h-2 mb-1">
+                <div
+                  className="bg-gradient-to-r from-aether-purple-light to-aether-indigo-light h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+              <div className="text-xs text-aether-text-muted">
+                {tokens.toLocaleString()} / {maxTokens.toLocaleString()} tokens
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* Footer */}

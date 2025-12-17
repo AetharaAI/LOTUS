@@ -242,7 +242,7 @@ export default function ChatInterface() {
                 Model
               </label>
               <select
-                className="bg-aether-bg border border-aether-border text-sm rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-aether-accent"
+                className="bg-aether-bg-dark border border-aether-indigo-light rounded-lg px-3 py-2 text-aether-text text-sm focus:outline-none focus:ring-2 focus:ring-aether-purple-light transition-all"
                 value={currentModel}
                 onChange={(e) => setCurrentModel(e.target.value)}
                 disabled={isStreaming}

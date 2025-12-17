@@ -104,12 +104,14 @@ export function Sidebar({ className = '', onClose }: SidebarProps) {
           onChange={(e) => setCurrentModel(e.target.value as any)}
           className="w-full bg-aether-bg-dark border border-aether-indigo-light rounded-lg px-3 py-2 text-aether-text text-sm focus:outline-none focus:ring-2 focus:ring-aether-purple-light transition-all"
         >
-          <option value="apriel">🏠 Apriel (Sovereign AI)</option>
-          <option value="auto">🤖 Auto-Select (Coming Soon)</option>
+          <option value="qwen3-vl-local">Qwen3-VL 30B (L40S-90)</option>
+          <option value="qwen3-omni-remote">Qwen3-Omni 30B (BlackBox)</option>
+          <option value="devstral-24b">Devstral 24B (Code)</option>
         </select>
         <p className="mt-2 text-xs text-aether-text-muted">
-          {currentModel === 'apriel' && 'Fast, reliable, US-hosted on L40S GPU'}
-          {currentModel === 'auto' && 'Smart routing - launching Q1 2025'}
+          {currentModel === 'qwen3-vl-local' && 'Fast, reliable, US-hosted on L40S GPU'}
+          {currentModel === 'qwen3-omni-remote' && 'Remote node via BlackBoxAudio'}
+          {currentModel === 'devstral-24b' && 'Engineer model for heavy coding'}
         </p>
       </div>
 

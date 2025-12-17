@@ -207,8 +207,7 @@ export default function ChatInterface() {
     <div className="flex h-screen bg-aether-bg-dark text-aether-text">
       {/* Sidebar */}
       <Sidebar
-        open={sidebarOpen}
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        onClose={() => setSidebarOpen(false)}
       />
 
       {/* Main panel */}

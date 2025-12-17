@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     // 1. Define the base hostname/port for LiteLLM.
     // Change env var name to reflect it is just the base.
     // Default to common local LiteLLM port if unset.
-    let upstreamBase = process.env.AETHER_LITELLM_BASE_URL || 'http://localhost:4000';
+    let upstreamBase = process.env.AETHER_LITELLM_BASE_URL || 'http://api.aetherpro.tech:8001';
 
     // 2. Remove trailing slash if present to ensure clean append.
     if (upstreamBase.endsWith('/')) {

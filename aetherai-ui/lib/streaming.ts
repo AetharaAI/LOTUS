@@ -116,106 +116,46 @@ export async function streamChat(
 
 /**
  * Handle individual stream events
- * Updated to support both Apriel custom events AND standard OpenAI/vLLM chunks
+ * Optimized for standard vLLM/OpenAI format with tool support
  */
 function handleStreamEvent(parsed: any, callbacks: StreamCallbacks): void {
-  // === 1. Standard OpenAI/vLLM Support ===
-  // vLLM sends { choices: [{ delta: { content: "..." } }] }
-  if (parsed.choices?.[0]?.delta?.content) {
-    callbacks.onContent?.(parsed.choices[0].delta.content);
+  const delta = parsed.choices?.[0]?.delta;
+
+  // 1. Standard content chunks
+  if (delta?.content) {
+    callbacks.onContent?.(delta.content);
     return;
   }
 
-  // Handle OpenAI [DONE] or empty deltas if needed
+  // 2. Tool calls (OpenAI format - vLLM/Qwen with tools enabled)
+  if (delta?.tool_calls) {
+    callbacks.onToolCallsDetected?.(delta.tool_calls);
+    return;
+  }
+
+  // 3. Finish reason (stop, tool_calls, etc.)
   if (parsed.choices?.[0]?.finish_reason) {
-    // Optional: triggering onFinalResponse here if needed,
-    // but usually we wait for the stream to close.
     return;
   }
 
-  // === 2. Custom Apriel Protocol ===
-  const eventType = parsed.type;
+  // 4. Error handling
+  if (parsed.error) {
+    callbacks.onError?.(parsed.error.message || parsed.error || 'Unknown stream error');
+    return;
+  }
 
-  switch (eventType) {
-    // Content events
-    case 'content':
-      if (parsed.content) {
-        callbacks.onContent?.(parsed.content);
-      }
-      break;
-
-    case 'final_start':
-      callbacks.onFinalStart?.();
-      break;
-
-    case 'final_response':
-      callbacks.onFinalResponse?.(parsed.content || '');
-      break;
-
-    // Tool events
-    case 'tool_use':
-      callbacks.onToolUse?.({
-        tool: parsed.tool,
-        query: parsed.query,
-        status: parsed.status || 'searching',
-        results: parsed.results,
-      });
-      break;
-
-    case 'tool_calls_detected':
-      callbacks.onToolCallsDetected?.(parsed.calls || []);
-      break;
-
-    case 'tool_executing':
-      callbacks.onToolExecuting?.(parsed.tool, parsed.arguments || {});
-      break;
-
-    case 'tool_result':
-      callbacks.onToolResult?.({
-        tool: parsed.tool,
-        query: parsed.result?.query || parsed.query || '',
-        results: parsed.result?.results || parsed.results || [],
-        status: 'complete',
-      });
-      break;
-
-    case 'tool_error':
-      callbacks.onToolError?.(parsed.tool, parsed.error || 'Tool execution failed');
-      break;
-
-    // Meta events
-    case 'model':
-      callbacks.onModel?.(parsed.model, parsed.tokens_used);
-      break;
-
-    case 'error':
-      callbacks.onError?.(parsed.error || parsed.message || 'Unknown error');
-      break;
-
-    case 'done':
-      callbacks.onDone?.(parsed.response);
-      break;
-
-    // Thinking events (kept for compatibility)
-    case 'thinking_start':
-      callbacks.onThinkingStart?.();
-      break;
-
-    case 'thinking':
-      if (parsed.content) {
-        callbacks.onThinking?.(parsed.content);
-      }
-      break;
-
-    case 'thinking_end':
-      callbacks.onThinkingEnd?.(parsed.content || '');
-      break;
-
-    default:
-      // Only log if it's truly unhandled (avoids log spam for empty OpenAI keepalives)
-      if (!parsed.choices) {
-        console.debug('Unknown stream event:', eventType, parsed);
-      }
+  // 5. Legacy/custom fallbacks (for your custom tool protocol if needed)
+  if (parsed.type === 'content' && parsed.content) {
+    callbacks.onContent?.(parsed.content);
+  } else if (parsed.type === 'tool_result') {
+    callbacks.onToolResult?.({
+      tool: parsed.tool,
+      query: parsed.query || '',
+      results: parsed.results || [],
+      status: 'complete',
+    });
+  } else if (parsed.type === 'tool_error') {
+    callbacks.onToolError?.(parsed.tool, parsed.error || 'Tool execution failed');
   }
 }
 

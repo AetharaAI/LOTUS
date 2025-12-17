@@ -5,7 +5,7 @@
  * Maintains full API compatibility with existing ChatInterface.tsx
  */
 
-const API_URL = '/v1';
+const API_URL = '/api';
 
 export interface StreamCallbacks {
   // Thinking events (Apriel 1.6 doesn't use these, but keeping for compatibility)

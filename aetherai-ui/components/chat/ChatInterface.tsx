@@ -9,6 +9,7 @@ import { streamChat } from '@/lib/streaming';
 
 export default function ChatInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [toolEnabled, setToolEnabled] = useState(true);
   const [currentToolUse, setCurrentToolUse] = useState<{
     tool: string;
     query: string;
@@ -23,7 +24,22 @@ export default function ChatInterface() {
     addMessage,
     updateLastMessage,
     setIsStreaming,
+    setCurrentModel,
   } = useChatStore();
+
+
+  const resolveUpstreamModel = () => {
+    switch (currentModel) {
+      case 'qwen3':
+        return 'qwen3-vl-30b';
+      case 'apriel':
+        return 'apriel';
+      case 'auto':
+      default:
+        return 'apriel';
+      
+    }
+  }
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isStreaming) return;
@@ -53,9 +69,9 @@ export default function ChatInterface() {
       await streamChat(
         {
           messages: contextMessages,
-          model: currentModel === 'auto' ? 'apriel-1.5-15b-thinker' : currentModel,
+          model: resolveUpstreamModel(),
           temperature: 0.7,
-          enable_tools: true,
+          enable_tools: toolEnabled,
         },
         {
           // === Thinking Callbacks ===
@@ -180,6 +196,13 @@ export default function ChatInterface() {
     }
   };
 
+  const currentModelLabel =
+    currentModel === 'auto'
+      ? 'AetherAI (Auto)'
+      : currentModel === 'qwen3'
+      ? 'Qwen3-VL-30B'
+      : 'Apriel (Legacy)';
+
   return (
     <div className="flex h-screen bg-aether-bg-dark text-aether-text">
       {/* Sidebar - Desktop always visible, Mobile toggleable */}
@@ -232,24 +255,45 @@ export default function ChatInterface() {
               AetherAI
             </h1>
             <p className="text-xs text-aether-text-muted">
-              Powered by Apriel • Sovereign US Infrastructure
+              Sovereign AI interface • Your data stays on US soil
             </p>
           </div>
 
-          {/* Model badge */}
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-aether-bg-dark rounded-full border border-aether-indigo-light">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-medium">
-              {currentModel === 'auto' ? 'Apriel (Auto)' : currentModel.toUpperCase()}
-            </span>
+          {/* Model selector + tools toggle */}
+          <div className="hidden md:flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-aether-bg-dark rounded-full border border-aether-indigo-light">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <select
+                value={currentModel}
+                onChange={(e) => 
+                  setCurrentModel(e.target.value as 'auto' | 'apriel' | 'qwen3')
+                }
+                className="bg-transparent text-xs font-medium focus:outline-none"
+              >
+                <option value="auto">AetherAI (Auto)</option>
+                <option value="qwen3">Qwen3-VL-30B</option>
+                <option value="apriel">Apriel (Legacy)</option>
+              </select>
+            </div>
+            
+            <button
+              onClick={() => setToolEnabled((v) => !v)}
+              className={`px-3 py-1.5 rounded-full border text-xs font-medium ${
+                toolEnabled
+                  ? 'border-aether-purple-light text-aether-purple-light'
+                  : 'border-aether-text-muted text-aether-text-muted'
+              }`}
+            >
+              Tools: {toolEnabled ? 'On' : 'Off'}
+            </button>
           </div>
         </header>
 
         {/* Messages */}
-        <MessageList 
-          messages={messages} 
-          isStreaming={isStreaming} 
-          currentToolUse={currentToolUse} 
+        <MessageList
+          messages={messages}
+          isStreaming={isStreaming}
+          currentToolUse={currentToolUse}
         />
 
         {/* Input */}

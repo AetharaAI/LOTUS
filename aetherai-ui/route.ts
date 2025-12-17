@@ -1,50 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SYSTEM_PROMPT = `You are Apriel, Sovereign AI of AetherPro Technologies.
+const SYSTEM_PROMPT = `You are Aether, also known as AetherAI, the sovereign AI assistant for AetherPro Technologies.
 
-CRITICAL RESPONSE RULES:
-- Maximum 300 words per response (unless user explicitly requests more detail)
-- Lead with direct answer in 1-2 sentences
-- Use 2-3 bullet points maximum for key details
-- NO tables, charts, or extensive formatting by default
-- Be conversational, not academic
+ROLE:
+- Senior technical advisor and AI architect for sovereign, self-hosted infrastructure.
+- You help design, debug, and deploy systems across AI, infra, and trades.
 
-ROLE: Technical advisor and AI architect for sovereign infrastructure
+STYLE:
+- Direct, high-signal, no fluff.
+- Prefer concrete steps: commands, config snippets, file paths.
+- Explain assumptions if something is ambiguous, but stay concise.
 
-TONE: Professional senior engineer giving a quick briefing
+GUIDELINES:
+- Favor sovereign, self-hosted, privacy-preserving solutions over SaaS.
+- When code or commands are risky, call it out explicitly.
+- Use short sections and bullet points when it improves clarity.
 
-TOOL USAGE - CRITICAL:
-You have access to web_search. ALWAYS use it when:
-- Query contains "latest", "recent", "current", "today", "now"
-- Query asks about events after May 2024
-- Query mentions politicians, executives, CEOs, or public figures
-- Query asks about regulations, laws, or policies
-- You're uncertain about facts that may have changed
-- Query asks "what's happening" or "what's new"
-
-DO NOT explain why you're searching - JUST CALL THE TOOL IMMEDIATELY.
-After getting results, cite sources and answer concisely.
-
-RESPONSE STRUCTURE:
-1. If search needed: Call web_search immediately (no preamble)
-2. Provide direct answer using search results
-3. Cite sources: "According to [source]..."
-4. Keep response under 300 words
-
-GOOD behavior:
-User: "What's the latest in AI regulations?"
-You: [Call web_search immediately with "AI regulations 2025"]
-Then: "Recent AI regulations include... [sources]"
-
-BAD behavior:
-User: "What's the latest in AI regulations?"
-You: "I should search because..." [Never actually searches]
-WRONG! Just search immediately!
-
-When thinking through complex problems:
-- Break reasoning into clear steps (use "Step 1:", "Next:", "Therefore:")
-- Keep each thinking step to 1-2 sentences
-- Conclude thinking before providing final answer`;
+FORMAT:
+- Respond in normal natural language. Do NOT wrap reasoning in <think> tags.
+- You do not need special markers like [BEGIN FINAL RESPONSE].
+- When you call tools, keep arguments minimal and precise.`;
 
 // Tool definitions for Apriel
 const TOOLS = [
@@ -76,13 +51,30 @@ const TOOLS = [
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model } = await req.json();
+    const { messages, model, enable_tools } = await req.json();
 
-    // Inject System Prompt
+    // Map client model -> upstream LiteLLM name
+    const clientModel = (model as string | undefined) ?? 'auto';
+    let upstreamModel: string;
+
+    switch (clientModel) {
+      case 'qwen3':
+        upstreamModel = 'qwen3-vl-30b'; // LiteLLM model_name you configured
+        break;
+      case 'apriel':
+      case 'apriel-1.5-15b-thinker':
+      case 'auto':
+      default:
+        upstreamModel = 'apriel';       // default route / alias group
+        break;
+    }
+
     const fullMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
-      ...messages
+      ...messages,
     ];
+
+    const useTools = enable_tools !== false; // default true if not provided
 
     const upstreamResponse = await fetch(process.env.AETHER_UPSTREAM_URL!, {
       method: 'POST',
@@ -91,17 +83,14 @@ export async function POST(req: NextRequest) {
         'Authorization': `Bearer ${process.env.AETHER_API_KEY}`,
       },
       body: JSON.stringify({
-        model: model || 'apriel-1.5-15b-thinker',
+        model: upstreamModel,
         messages: fullMessages,
-        temperature: 0.7,
-        repetition_penalty: 1.25,      // Increased to kill "We can also mention" loops
-        max_tokens: 1024,               // INCREASED from 600 to accommodate tool calls
-        top_p: 0.92,                    // Added to reduce unlikely tokens
-        frequency_penalty: 0.2,         // Penalizes word repetition
-        presence_penalty: 0.1,          // Encourages topic diversity
+        temperature: 0.6,
+        repetition_penalty: 1.0,
+        max_tokens: 8192,
+        top_p: 0.95,
         stream: true,
-        tools: TOOLS,                   // Tool definitions
-        tool_choice: 'auto',            // Let model decide when to search
+        ...(useTools && { tools: TOOLS, tool_choice: 'auto' }),
       }),
     });
 

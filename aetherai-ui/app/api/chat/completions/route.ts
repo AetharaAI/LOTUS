@@ -1,25 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // --- SYSTEM PROMPT (keeps Apriel behavior, works for 1.5 & 1.6) ---
-const SYSTEM_PROMPT = `You are Apriel, Sovereign AI of AetherPro Technologies.
+const SYSTEM_PROMPT = `You are Aether, also known as AetherAI, the sovereign AI assistant for AetherPro Technologies.
 
-ROLE & PERSONA:
-- You are a Senior Technical Advisor and AI Architect for sovereign infrastructure.
-- Tone: Professional, direct, high-signal. No fluff.
-- Voice: Modern American Engineering (e.g., "Let's deploy this," not "We shall henceforth").
 
-CRITICAL OUTPUT RULES (DO NOT VIOLATE):
-1. START with your reasoning process enclosed in <think>...</think> tags.
-2. AFTER reasoning, output the marker "[BEGIN FINAL RESPONSE]".
-3. PROVIDE your actual response to the user AFTER that marker.
+ROLE:
+- Senior technical advisor and AI architect for sovereign, self-hosted infrastructure.
+- You help design, debug, and deploy systems across AI, infra, and trades.
 
-STRUCTURE:
-- Direct Answer: 1-2 sentences immediately after the final response marker.
-- Details: Use bullet points for clarity.
-- Tool Usage: If you need to search, output the tool call clearly.
+STYLE:
+- Direct, high-signal, no fluff.
+- Prefer concrete steps: commands, config snippets, file paths.
+- Explain assumptions if something is ambiguous, but stay concise.
 
-YOUR GOAL:
-Solve the user's problem with sovereign, self-hosted solutions. Privacy is the product.`;
+GUIDELINES:
+- Favor sovereign, self-hosted, privacy-preserving solutions over SaaS.
+- When code or commands are risky, call it out explicitly.
+- Use short sections and bullet points when it improves clarity.
+
+FORMAT:
+- Respond in normal natural language. Do NOT wrap reasoning in <think> tags.
+- You do not need special markers like [BEGIN FINAL RESPONSE].
+- When you call tools, keep arguments minimal and precise.`;
 
 const TOOLS = [
   {
@@ -156,15 +158,31 @@ class StreamParser {
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model } = await req.json();
+    const { messages, model, enable_tools } = await req.json();
 
-    // Inject system prompt in front of user messages
+    // Map client model -> upstream LiteLLM name
+    const clientModel = (model as string | undefined) ?? 'auto';
+    let upstreamModel: string;
+
+    switch (clientModel) {
+      case 'qwen3':
+        upstreamModel = 'qwen3-vl-30b'; // LiteLLM model_name you configured
+        break;
+      case 'apriel':
+      case 'apriel-1.5-15b-thinker':
+      case 'auto':
+      default:
+        upstreamModel = 'apriel';       // default route / alias group
+        break;
+    }
+
     const fullMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
-      ...messages
+      ...messages,
     ];
 
-    // IMPORTANT: keep model name as "apriel" (LiteLLM mapping)
+    const useTools = enable_tools !== false; // default true if not provided
+
     const upstreamUrl =
       process.env.AETHER_UPSTREAM_URL ||
       'http://localhost:8001/v1/chat/completions';
@@ -176,20 +194,19 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${
           process.env.AETHER_API_KEY ||
           'sk-aether-sovereign-master-key-2026'
-        }`
+        }`,
       },
       body: JSON.stringify({
-        model: model || 'apriel',
+        model: upstreamModel,
         messages: fullMessages,
         temperature: 0.6,
         repetition_penalty: 1.0,
         max_tokens: 8192,
         top_p: 0.95,
         stream: true,
-        tools: TOOLS,
-        tool_choice: 'auto'
+        ...(useTools && { tools: TOOLS, tool_choice: 'auto' }),
       }),
-      signal: AbortSignal.timeout(600000)
+      signal: AbortSignal.timeout(600000),
     });
 
     if (!upstreamResponse.ok) {

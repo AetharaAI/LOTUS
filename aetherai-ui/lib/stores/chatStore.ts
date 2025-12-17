@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+type SupportedModel = 'auto' | 'apriel' | 'qwen3';
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -27,7 +29,7 @@ interface ChatState {
   isStreaming: boolean;
 
   // Model selection
-  currentModel: 'apriel' | 'auto';
+  currentModel: SupportedModel;
 
   // Conversations list
   conversations: Conversation[];
@@ -37,7 +39,7 @@ interface ChatState {
   updateLastMessage: (updates: Partial<Message>) => void;
   clearMessages: () => void;
   setIsStreaming: (streaming: boolean) => void;
-  setCurrentModel: (model: 'apriel' | 'auto') => void;
+  setCurrentModel: (model: SupportedModel) => void;
   loadConversation: (conversationId: string) => void;
   createNewConversation: () => void;
   deleteConversation: (conversationId: string) => void;

@@ -116,13 +116,28 @@ export async function streamChat(
 
 /**
  * Handle individual stream events
- * Simplified for Apriel 1.6 - no complex parsing needed
+ * Updated to support both Apriel custom events AND standard OpenAI/vLLM chunks
  */
 function handleStreamEvent(parsed: any, callbacks: StreamCallbacks): void {
+  // === 1. Standard OpenAI/vLLM Support ===
+  // vLLM sends { choices: [{ delta: { content: "..." } }] }
+  if (parsed.choices?.[0]?.delta?.content) {
+    callbacks.onContent?.(parsed.choices[0].delta.content);
+    return;
+  }
+
+  // Handle OpenAI [DONE] or empty deltas if needed
+  if (parsed.choices?.[0]?.finish_reason) {
+    // Optional: triggering onFinalResponse here if needed,
+    // but usually we wait for the stream to close.
+    return;
+  }
+
+  // === 2. Custom Apriel Protocol ===
   const eventType = parsed.type;
 
   switch (eventType) {
-    // Content events (main path for 1.6)
+    // Content events
     case 'content':
       if (parsed.content) {
         callbacks.onContent?.(parsed.content);
@@ -137,7 +152,7 @@ function handleStreamEvent(parsed: any, callbacks: StreamCallbacks): void {
       callbacks.onFinalResponse?.(parsed.content || '');
       break;
 
-    // Tool events (for future use)
+    // Tool events
     case 'tool_use':
       callbacks.onToolUse?.({
         tool: parsed.tool,
@@ -181,7 +196,7 @@ function handleStreamEvent(parsed: any, callbacks: StreamCallbacks): void {
       callbacks.onDone?.(parsed.response);
       break;
 
-    // Thinking events (1.6 doesn't emit these, but kept for compatibility)
+    // Thinking events (kept for compatibility)
     case 'thinking_start':
       callbacks.onThinkingStart?.();
       break;
@@ -197,7 +212,10 @@ function handleStreamEvent(parsed: any, callbacks: StreamCallbacks): void {
       break;
 
     default:
-      console.debug('Unknown stream event:', eventType, parsed);
+      // Only log if it's truly unhandled (avoids log spam for empty OpenAI keepalives)
+      if (!parsed.choices) {
+        console.debug('Unknown stream event:', eventType, parsed);
+      }
   }
 }
 

@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     let upstreamBase = process.env.UPSTREAM_URL || 
                        process.env.AETHER_UPSTREAM_URL || 
                        process.env.LITELLM_URL || 
-                       'http://api.aetherpro.tech:8001';
+                       'http://localhost:8001';
 
     // 2. Remove trailing slash if present to ensure clean append.
     if (upstreamBase.endsWith('/')) {

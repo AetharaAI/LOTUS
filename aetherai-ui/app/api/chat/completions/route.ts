@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 
 const SYSTEM_PROMPT = `You are AetherAI, the sovereign assistant of AetherPro Technologies.
 
-You run on a fully self-hosted, sovereign stack (OVHcloud, AetherAuth, Triad Intelligence).
+You run on a fully self-hosted, sovereign stack (OVHcloud GPUs, AetherAuth, Triad Intelligence).
 Your job:
 - Be direct, high-signal, and technically precise.
 - Prioritize sovereign, self-hostable solutions (Docker, Postgres, Redis/Valkey, Weaviate, vLLM, etc.).
@@ -11,42 +11,14 @@ Your job:
 Style:
 - Use clear, modern engineering language.
 - Prefer concise explanations with bullet points or short sections.
-- When you are unsure about a detail, say so instead of hallucinating.
-
-Do NOT wrap your reasoning in special tags; just answer in normal markdown.`;
-
-const TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description:
-        'Search the web for current information, recent news, or facts not in training data.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'The search query. Be specific and concise.',
-          },
-          num_results: {
-            type: 'integer',
-            description: 'Number of results to return (1-10). Default is 5.',
-            default: 5,
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-];
+- When you are unsure about a detail, say so instead of hallucinating.`;
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages = [], model, temperature, enable_tools } = body;
+    const { messages = [], model, temperature } = body;
 
     const fullMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -55,59 +27,52 @@ export async function POST(req: NextRequest) {
 
     const upstreamUrl =
       process.env.AETHER_UPSTREAM_URL ||
-      'http://localhost:8001/v1/chat/completions';
+      'https://api.aetherpro.tech/v1/chat/completions';
 
     const upstreamResponse = await fetch(upstreamUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${
-          process.env.AETHER_API_KEY ||
-          'sk-aether-sovereign-master-key-2026'
-        }`,
+        Authorization: `Bearer ${process.env.AETHER_API_KEY ?? ''}`,
       },
       body: JSON.stringify({
         model: model || 'qwen3-vl-local',
         messages: fullMessages,
         temperature: temperature ?? 0.7,
-        max_tokens: 8192,
+        max_tokens: 2048,
         top_p: 0.95,
         stream: true,
-        // tools are wired through but not executed server-side (yet)
-        tools: enable_tools ? TOOLS : undefined,
-        tool_choice: enable_tools ? 'auto' : 'none',
       }),
-      // be generous; GPU cold starts happen
       signal: AbortSignal.timeout(600000),
     });
 
     if (!upstreamResponse.ok || !upstreamResponse.body) {
       const errText = await upstreamResponse.text().catch(() => '');
-      console.error('Upstream Error:', upstreamResponse.status, errText);
+      console.error(
+        'LiteLLM upstream error:',
+        upstreamResponse.status,
+        errText
+      );
       return new Response(
         JSON.stringify({
-          error: `Upstream Error: ${upstreamResponse.status}`,
+          error: `LiteLLM error ${upstreamResponse.status}`,
+          detail: errText,
         }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Just stream LiteLLM / vLLM output straight through as SSE
     const stream = new ReadableStream({
       async start(controller) {
         const reader = upstreamResponse.body!.getReader();
-        const encoder = new TextEncoder();
-
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            if (value) {
-              controller.enqueue(value);
-            }
+            if (value) controller.enqueue(value);
           }
-        } catch (err) {
-          console.error('Stream error:', err);
+        } catch (e) {
+          console.error('Stream error:', e);
         } finally {
           controller.close();
         }
@@ -123,10 +88,12 @@ export async function POST(req: NextRequest) {
         'Transfer-Encoding': 'chunked',
       },
     });
-  } catch (error: any) {
-    console.error('Chat route error:', error);
+  } catch (err: any) {
+    console.error('Chat route fatal error:', err);
     return new Response(
-      JSON.stringify({ error: error?.message || 'Unknown error' }),
+      JSON.stringify({
+        error: err?.message || 'Unknown error in /api/chat',
+      }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }

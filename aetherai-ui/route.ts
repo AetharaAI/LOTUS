@@ -68,14 +68,33 @@ export async function POST(req: NextRequest) {
     let apiKey: string;
 
     if (clientModel === 'qwen3-vl-local') {
-      upstreamUrl = process.env.AETHER_UPSTREAM_URL!;
+      // Build upstream URL - handle both base URL and full path in env var
+      const envUrl = process.env.AETHER_UPSTREAM_URL || 'http://localhost:8000/v1/chat/completions';
+
+      if (envUrl.includes('/chat/completions')) {
+        // Env var already has the full path
+        upstreamUrl = envUrl.replace(/\/$/, '');
+      } else {
+        // Env var is just the base URL
+        const baseUrl = envUrl.replace(/\/$/, '');
+        upstreamUrl = `${baseUrl}/v1/chat/completions`;
+      }
+
       apiKey = process.env.AETHER_API_KEY!;
     } else if (clientModel === 'qwen3-omni-remote') {
       upstreamUrl = 'https://api.blackboxaudio.tech/v1/chat/completions';
       apiKey = process.env.BLACKBOX_API_KEY || 'sk-blackbox-omni';
     } else {
       // Default to local
-      upstreamUrl = process.env.AETHER_UPSTREAM_URL!;
+      const envUrl = process.env.AETHER_UPSTREAM_URL || 'http://localhost:8000/v1/chat/completions';
+
+      if (envUrl.includes('/chat/completions')) {
+        upstreamUrl = envUrl.replace(/\/$/, '');
+      } else {
+        const baseUrl = envUrl.replace(/\/$/, '');
+        upstreamUrl = `${baseUrl}/v1/chat/completions`;
+      }
+
       apiKey = process.env.AETHER_API_KEY!;
     }
 

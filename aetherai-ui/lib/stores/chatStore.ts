@@ -46,6 +46,7 @@ interface ChatState {
   getContext: () => Message[];
   resetContext: () => void;
   getContextTokens: () => number;
+  resetStore: () => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -57,6 +58,17 @@ export const useChatStore = create<ChatState>()(
       isStreaming: false,
       currentModel: 'qwen3-vl-local',
       conversations: [],
+
+      // Reset function to handle migration
+      resetStore: () => {
+        set({
+          messages: [],
+          currentConversationId: null,
+          isStreaming: false,
+          currentModel: 'qwen3-vl-local',
+          conversations: [],
+        });
+      },
 
       // Actions
       addMessage: (message) => {

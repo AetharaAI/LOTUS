@@ -53,21 +53,8 @@ export async function POST(req: NextRequest) {
   try {
     const { messages, model, enable_tools } = await req.json();
 
-    // Map client model -> upstream LiteLLM name
-    const clientModel = (model as string | undefined) ?? 'auto';
-    let upstreamModel: string;
-
-    switch (clientModel) {
-      case 'qwen3':
-        upstreamModel = 'qwen3-vl-30b'; // LiteLLM model_name you configured
-        break;
-      case 'apriel':
-      case 'apriel-1.5-15b-thinker':
-      case 'auto':
-      default:
-        upstreamModel = 'apriel';       // default route / alias group
-        break;
-    }
+    // Simple model selection - frontend picks the backend
+    const clientModel = (model as string | undefined) ?? 'qwen3-vl-local';
 
     const fullMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -76,14 +63,30 @@ export async function POST(req: NextRequest) {
 
     const useTools = enable_tools !== false; // default true if not provided
 
-    const upstreamResponse = await fetch(process.env.AETHER_UPSTREAM_URL!, {
+    // Choose backend URL based on model
+    let upstreamUrl: string;
+    let apiKey: string;
+
+    if (clientModel === 'qwen3-vl-local') {
+      upstreamUrl = process.env.AETHER_UPSTREAM_URL!;
+      apiKey = process.env.AETHER_API_KEY!;
+    } else if (clientModel === 'qwen3-omni-remote') {
+      upstreamUrl = 'https://api.blackboxaudio.tech/v1/chat/completions';
+      apiKey = process.env.BLACKBOX_API_KEY || 'sk-blackbox-omni';
+    } else {
+      // Default to local
+      upstreamUrl = process.env.AETHER_UPSTREAM_URL!;
+      apiKey = process.env.AETHER_API_KEY!;
+    }
+
+    const upstreamResponse = await fetch(upstreamUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.AETHER_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: upstreamModel,
+        model: clientModel,
         messages: fullMessages,
         temperature: 0.6,
         repetition_penalty: 1.0,

@@ -25,10 +25,22 @@ export async function POST(req: NextRequest) {
       ...messages,
     ];
 
-    const upstreamUrl =
-      process.env.AETHER_UPSTREAM_URL ||
-      'https://api.aetherpro.tech/v1/chat/completions';
+    // 1. Define the base hostname/port for LiteLLM.
+    // Change env var name to reflect it is just the base.
+    // Default to common local LiteLLM port if unset.
+    let upstreamBase = process.env.AETHER_LITELLM_BASE_URL || 'http://127.0.0.1:4000';
 
+    // 2. Remove trailing slash if present to ensure clean append.
+    if (upstreamBase.endsWith('/')) {
+        upstreamBase = upstreamBase.slice(0, -1);
+    }
+
+    // 3. Construct the full validated endpoint.
+    const upstreamUrl = `${upstreamBase}/v1/chat/completions`;
+
+    // Debug log to confirm traffic flow in server console
+    console.log(`[Aether API] Proxying request to: ${upstreamUrl}`);
+    
     const upstreamResponse = await fetch(upstreamUrl, {
       method: 'POST',
       headers: {

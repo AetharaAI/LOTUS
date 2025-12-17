@@ -16,9 +16,14 @@ Style:
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
+  console.log('[Aether API] === NEW REQUEST ===');
+  
   try {
     const body = await req.json();
     const { messages = [], model, temperature } = body;
+
+    console.log(`[Aether API] Received ${messages.length} messages`);
+    console.log(`[Aether API] Requested model: ${model || 'qwen3-vl-local'}`);
 
     const fullMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -26,9 +31,11 @@ export async function POST(req: NextRequest) {
     ];
 
     // 1. Define the base hostname/port for LiteLLM.
-    // Change env var name to reflect it is just the base.
-    // Default to common local LiteLLM port if unset.
-    let upstreamBase = process.env.AETHER_UPSTREAM_URL || 'http://api.aetherpro.tech:8001';
+    // Supports multiple env var names for compatibility.
+    let upstreamBase = process.env.UPSTREAM_URL || 
+                       process.env.AETHER_UPSTREAM_URL || 
+                       process.env.LITELLM_URL || 
+                       'http://localhost:8001';
 
     // 2. Remove trailing slash if present to ensure clean append.
     if (upstreamBase.endsWith('/')) {
@@ -39,7 +46,10 @@ export async function POST(req: NextRequest) {
     const upstreamUrl = `${upstreamBase}/v1/chat/completions`;
 
     // Debug log to confirm traffic flow in server console
-    console.log(`[Aether API] Proxying request to: ${upstreamUrl}`);
+    console.log(`[Aether API] Using upstream base: ${upstreamBase}`);
+    console.log(`[Aether API] Full endpoint: ${upstreamUrl}`);
+    console.log(`[Aether API] Model requested: ${model || 'qwen3-vl-local'}`);
+    console.log(`[Aether API] API Key present: ${process.env.AETHER_API_KEY ? 'YES' : 'NO'}`);
 
     const upstreamResponse = await fetch(upstreamUrl, {
       method: 'POST',
@@ -58,10 +68,12 @@ export async function POST(req: NextRequest) {
       signal: AbortSignal.timeout(600000),
     });
 
+    console.log(`[Aether API] Upstream response status: ${upstreamResponse.status}`);
+
     if (!upstreamResponse.ok || !upstreamResponse.body) {
       const errText = await upstreamResponse.text().catch(() => '');
       console.error(
-        'LiteLLM upstream error:',
+        '[Aether API] LiteLLM upstream error:',
         upstreamResponse.status,
         errText
       );
@@ -69,10 +81,13 @@ export async function POST(req: NextRequest) {
         JSON.stringify({
           error: `LiteLLM error ${upstreamResponse.status}`,
           detail: errText,
+          upstreamUrl: upstreamUrl, // Include for debugging
         }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log('[Aether API] Starting stream passthrough...');
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -80,11 +95,14 @@ export async function POST(req: NextRequest) {
         try {
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+              console.log('[Aether API] Stream complete');
+              break;
+            }
             if (value) controller.enqueue(value);
           }
         } catch (e) {
-          console.error('Stream error:', e);
+          console.error('[Aether API] Stream error:', e);
         } finally {
           controller.close();
         }
@@ -101,10 +119,12 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error('Chat route fatal error:', err);
+    console.error('[Aether API] Fatal error:', err);
+    console.error('[Aether API] Stack:', err.stack);
     return new Response(
       JSON.stringify({
         error: err?.message || 'Unknown error in /api/chat',
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
